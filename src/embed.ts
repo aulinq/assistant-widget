@@ -6,7 +6,8 @@
  * <script src="https://cdn.example.com/assistant-widget.js"></script>
  * <script>
  *   ChatWidget.init({
- *     serverUrl: 'ws://localhost:8080/ws',
+ *     identityUrl: 'http://localhost:8100',
+ *     runtimeUrl: 'http://localhost:8890/v1/chat/stream',
  *     siteToken: 'your-token',
  *     theme: 'default',
  *     title: 'Chat',
@@ -39,9 +40,14 @@ declare global {
         theme?: ThemeVariant;
         customColors?: Record<string, string> | null;
         serverUrl?: string;
+        identityUrl?: string;
+        runtimeUrl?: string;
+        transport?: 'sse' | 'ws';
         title?: string;
         placeholder?: string;
         lang?: 'ru' | 'en';
+        mode?: 'floating' | 'inline';
+        containerId?: string;
       };
     };
   }
@@ -98,21 +104,29 @@ function autoInitialize() {
     const config = window.IOChat.config;
 
     // Only auto-init if we have required fields
-    if (config.siteToken && config.serverUrl) {
+    if (config.siteToken) {
       const initConfig: ChatWidgetConfig & {
         variant?: ThemeVariant;
         customColors?: Record<string, string>;
       } = {
-        serverUrl: config.serverUrl,
         siteToken: config.siteToken,
       };
 
       // Add optional fields
+      if (config.serverUrl) initConfig.serverUrl = config.serverUrl;
+      if (config.identityUrl) initConfig.identityUrl = config.identityUrl;
+      if (config.runtimeUrl) initConfig.runtimeUrl = config.runtimeUrl;
+      if (config.transport) initConfig.transport = config.transport;
       if (config.theme) initConfig.variant = config.theme;
       if (config.customColors) initConfig.customColors = config.customColors;
       if (config.title) initConfig.title = config.title;
       if (config.placeholder) initConfig.placeholder = config.placeholder;
       if (config.lang) initConfig.lang = config.lang;
+      if (config.mode) initConfig.mode = config.mode;
+      if (config.containerId) {
+        const container = document.getElementById(config.containerId);
+        if (container) initConfig.container = container;
+      }
 
       window.ChatWidget.init(initConfig);
       return;
@@ -123,9 +137,15 @@ function autoInitialize() {
   const script = document.querySelector('script[data-assistant-widget]');
   if (script) {
     const serverUrl = script.getAttribute('data-server-url');
-    const siteToken = script.getAttribute('data-site-token');
+    const identityUrl = script.getAttribute('data-identity-url');
+    const runtimeUrl = script.getAttribute('data-runtime-url');
+    const transport = script.getAttribute('data-transport') as 'sse' | 'ws' | null;
+    const siteToken = script.getAttribute('data-site-token') || script.getAttribute('data-token');
     const variant = script.getAttribute('data-variant') as ThemeVariant;
     const title = script.getAttribute('data-title');
+    const placeholder = script.getAttribute('data-placeholder');
+    const mode = script.getAttribute('data-mode') as 'floating' | 'inline' | null;
+    const containerId = script.getAttribute('data-container-id');
 
     // Parse custom colors if present (JSON string in data-custom-colors)
     let customColors;
@@ -138,12 +158,18 @@ function autoInitialize() {
       }
     }
 
-    if (serverUrl && siteToken) {
+    if (siteToken) {
       window.ChatWidget.init({
-        serverUrl,
+        serverUrl: serverUrl || undefined,
+        identityUrl: identityUrl || undefined,
+        runtimeUrl: runtimeUrl || undefined,
+        transport: transport || undefined,
         siteToken,
         variant,
         title: title || undefined,
+        placeholder: placeholder || undefined,
+        mode: mode || undefined,
+        container: containerId ? document.getElementById(containerId) || undefined : undefined,
         customColors,
         lang: (script.getAttribute('data-lang') as 'ru' | 'en') || undefined,
       });

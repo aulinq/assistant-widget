@@ -1,6 +1,6 @@
 {
-  "name": "@creastat/assistant-widget",
-  "version": "1.0.4",
+  "name": "@aulinq/assistant-widget",
+  "version": "1.0.9",
   "description": "Headless chat widget library with vanilla JS core and React components",
   "keywords": [
     "chat",
@@ -9,16 +9,16 @@
     "websocket",
     "react"
   ],
-  "homepage": "https://github.com/creastat/assistant-widget#readme",
+  "homepage": "https://github.com/aulinq/assistant-widget#readme",
   "bugs": {
-    "url": "https://github.com/creastat/assistant-widget/issues"
+    "url": "https://github.com/aulinq/assistant-widget/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/creastat/assistant-widget.git"
+    "url": "git+https://github.com/aulinq/assistant-widget.git"
   },
   "license": "MIT",
-  "author": "Creastat",
+  "author": "Aulinq",
   "type": "module",
   "exports": {
     ".": {

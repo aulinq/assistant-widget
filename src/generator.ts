@@ -5,7 +5,7 @@
  *
  * Usage in dashboard:
  * ```typescript
- * import { generateWidgetScript } from '@creastat/assistant-widget/generator';
+ * import { generateWidgetScript } from '@aulinq/assistant-widget/generator';
  *
  * const script = generateWidgetScript({
  *   siteToken: user.siteToken,
@@ -30,6 +30,11 @@ export interface WidgetScriptConfig {
   lang?: 'ru' | 'en';
   cdnUrl?: string;
   serverUrl?: string;
+  identityUrl?: string;
+  runtimeUrl?: string;
+  transport?: 'sse' | 'ws';
+  mode?: 'floating' | 'inline';
+  containerId?: string;
 }
 
 /**
@@ -43,8 +48,13 @@ export function generateWidgetScript(config: WidgetScriptConfig): string {
     title = 'Chat Support',
     placeholder = 'Type your message...',
     lang = 'en',
-    cdnUrl = 'https://cdn.creastat.com/assistant-widget/v1/embed.js',
-    serverUrl = 'wss://api.creastat.com/ws',
+    cdnUrl = 'https://cdn.aulinq.com/assistant-widget/v2/embed.js',
+    serverUrl,
+    identityUrl = 'https://api.aulinq.com',
+    runtimeUrl = 'https://runtime.aulinq.com/v1/chat/stream',
+    transport = 'sse',
+    mode = 'floating',
+    containerId = 'aulinq-assistant-widget',
   } = config;
 
   // Format custom colors for script
@@ -54,18 +64,23 @@ export function generateWidgetScript(config: WidgetScriptConfig): string {
       ).join('\n')
     : 'null';
 
-  return `<!-- Creastat Chat Widget -->
-<script>
+  return `<!-- Aulinq Chat Widget -->
+${mode === 'inline' ? `<div id="${containerId}"></div>\n` : ''}<script>
 (function() {
   var config = {
     cdnUrl: '${cdnUrl}',
     siteToken: '${siteToken}',
     theme: '${theme}',
     customColors: ${customColorsStr},
-    serverUrl: '${serverUrl}',
+    ${serverUrl ? `serverUrl: '${serverUrl}',` : ''}
+    identityUrl: '${identityUrl}',
+    runtimeUrl: '${runtimeUrl}',
+    transport: '${transport}',
     title: '${title}',
     placeholder: '${placeholder}',
-    lang: '${lang}'
+    lang: '${lang}',
+    mode: '${mode}'${mode === 'inline' ? `,
+    containerId: '${containerId}'` : ''}
   };
 
   window.IOChat = window.IOChat || function() {
@@ -78,7 +93,7 @@ export function generateWidgetScript(config: WidgetScriptConfig): string {
   script.async = true;
   script.src = config.cdnUrl;
   script.onerror = function() {
-    console.error('Failed to load Creastat Chat Widget');
+    console.error('Failed to load Aulinq Chat Widget');
   };
 
   var firstScript = document.getElementsByTagName('script')[0];
@@ -98,13 +113,21 @@ export function generateWidgetScriptMinified(config: WidgetScriptConfig): string
     title = 'Chat Support',
     placeholder = 'Type your message...',
     lang = 'en',
-    cdnUrl = 'https://cdn.creastat.com/assistant-widget/v1/embed.js',
-    serverUrl = 'wss://bot.creastat.com/ws',
+    cdnUrl = 'https://cdn.aulinq.com/assistant-widget/v2/embed.js',
+    serverUrl,
+    identityUrl = 'https://api.aulinq.com',
+    runtimeUrl = 'https://runtime.aulinq.com/v1/chat/stream',
+    transport = 'sse',
+    mode = 'floating',
+    containerId = 'aulinq-assistant-widget',
   } = config;
 
   const customColorsStr = customColors ? JSON.stringify(customColors) : 'null';
+  const serverUrlStr = serverUrl ? `,serverUrl:'${serverUrl}'` : '';
+  const inlinePrefix = mode === 'inline' ? `<div id="${containerId}"></div>` : '';
+  const containerStr = mode === 'inline' ? `,containerId:'${containerId}'` : '';
 
-  return `<script>(function(){var c={cdnUrl:'${cdnUrl}',siteToken:'${siteToken}',theme:'${theme}',customColors:${customColorsStr},serverUrl:'${serverUrl}',title:'${title}',placeholder:'${placeholder}',lang:'${lang}'};window.IOChat=window.IOChat||function(){(window.IOChat.q=window.IOChat.q || []).push(arguments)};window.IOChat.l=+new Date();window.IOChat.config=c;var s=document.createElement('script');s.async=true;s.src=c.cdnUrl;s.onerror=function(){console.error('Failed to load Creastat Chat Widget')};var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)})();</script>`;
+  return `${inlinePrefix}<script>(function(){var c={cdnUrl:'${cdnUrl}',siteToken:'${siteToken}',theme:'${theme}',customColors:${customColorsStr}${serverUrlStr},identityUrl:'${identityUrl}',runtimeUrl:'${runtimeUrl}',transport:'${transport}',title:'${title}',placeholder:'${placeholder}',lang:'${lang}',mode:'${mode}'${containerStr}};window.IOChat=window.IOChat||function(){(window.IOChat.q=window.IOChat.q || []).push(arguments)};window.IOChat.l=+new Date();window.IOChat.config=c;var s=document.createElement('script');s.async=true;s.src=c.cdnUrl;s.onerror=function(){console.error('Failed to load Aulinq Chat Widget')};var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)})();</script>`;
 }
 
 /**

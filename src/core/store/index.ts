@@ -112,7 +112,6 @@ export class ChatStore {
   setError(error: string | null): void {
     this.setState({
       error,
-      isConnected: false,
       isConnecting: false,
     });
   }

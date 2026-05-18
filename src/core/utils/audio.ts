@@ -323,7 +323,7 @@ export class AudioPlaybackManager {
 
     try {
       // Assuming raw PCM signed 16-bit little-endian at 24000 Hz if decodeAudioData fails
-      // This matches the creastat implementation for raw streaming
+      // This matches the aulinq implementation for raw streaming
       this.audioQueue.push(buffer);
 
       if (!this.isPlaying) {
@@ -362,7 +362,7 @@ export class AudioPlaybackManager {
     }
 
     try {
-      // First try PCM conversion (as used in creastat for streaming)
+      // First try PCM conversion (as used in aulinq for streaming)
       // Most high-performance TTS streaming uses raw PCM
       const audioBuffer = this.pcmToAudioBuffer(audioData, 24000, 1);
       const source = this.audioContext!.createBufferSource();

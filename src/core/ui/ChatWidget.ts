@@ -10,6 +10,7 @@ export interface ChatWidgetConfig extends ChatConfig {
   lang?: 'ru' | 'en';
   variant?: string;
   customColors?: any;
+  mode?: 'floating' | 'inline';
 }
 
 export interface ChatWidgetTheme {
@@ -31,18 +32,20 @@ export class ChatWidget {
   protected unsubscribe?: () => void;
   protected root?: HTMLElement;
   protected theme: ChatWidgetTheme;
-  protected animationFrameId: number | null = null; // Added animationFrameId property
 
   constructor(config: ChatWidgetConfig, theme: ChatWidgetTheme) {
     this.config = {
       title: 'Chat',
       placeholder: 'Type a message...',
+      mode: 'floating',
       ...config,
     };
     this.theme = theme;
+    this.widgetState = this.config.mode === 'inline' ? 'full' : 'minimized';
 
     // Find or create container
     this.container = config.container || this.createDefaultContainer();
+    this.container.classList.add(`assistant-widget-container-${this.config.mode || 'floating'}`);
 
     // Initialize chat service
     const chatServiceConfig = {
@@ -51,11 +54,6 @@ export class ChatWidget {
     };
 
     this.service = new ChatService(chatServiceConfig, (event) => {
-      if (event.type === 'recording-start') {
-        if (this.widgetState !== 'full') {
-          this.setWidgetState('full');
-        }
-      }
       if (config.debug) {
         console.log('[ChatWidget] Event:', event);
       }
@@ -63,12 +61,6 @@ export class ChatWidget {
 
     // Subscribe to state changes
     this.unsubscribe = this.service.store.subscribe(() => {
-      const state = this.service.store.getState();
-      if (state.isSpeaking && !this.animationFrameId) {
-        this.startVolumeAnimation();
-      } else if (!state.isSpeaking && this.animationFrameId) {
-        this.stopVolumeAnimation();
-      }
       this.render();
     });
 
@@ -80,23 +72,6 @@ export class ChatWidget {
       this.service.connect().catch((error) => {
         console.error('[ChatWidget] Auto-connect failed:', error);
       });
-    }
-  }
-
-  private startVolumeAnimation(): void {
-    const updateVolume = () => {
-      const volume = this.service.getVolume();
-      this.container.style.setProperty('--speaking-volume', volume.toFixed(3));
-      this.animationFrameId = requestAnimationFrame(updateVolume);
-    };
-    this.animationFrameId = requestAnimationFrame(updateVolume);
-  }
-
-  private stopVolumeAnimation(): void {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-      this.container.style.setProperty('--speaking-volume', '0');
     }
   }
 
@@ -131,7 +106,7 @@ export class ChatWidget {
     }
 
     // Update root classes
-    this.root.className = `assistant-widget ${this.theme.getClassName()} assistant-widget-${this.widgetState}`;
+    this.root.className = `assistant-widget ${this.theme.getClassName()} assistant-widget-${this.widgetState} assistant-widget-mode-${this.config.mode || 'floating'}`;
 
     // Only update innerHTML if it has changed significantly or if we want to support full re-renders
     // For now, we keep the simple innerHTML replacement but the root class handles the transitions
@@ -160,6 +135,9 @@ export class ChatWidget {
     const header = this.root.querySelector('.chat-header');
     if (header) {
       header.addEventListener('click', (e) => {
+        if (this.config.mode === 'inline') {
+          return;
+        }
         const target = e.target as HTMLElement;
         // Don't toggle if clicking on actual action buttons (like Close or TTS)
         if (target.closest('.chat-header-button')) {
@@ -177,15 +155,6 @@ export class ChatWidget {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handleClose();
-      });
-    }
-
-    // TTS toggle button
-    const ttsBtn = this.root.querySelector('[data-action="toggle-tts"]');
-    if (ttsBtn) {
-      ttsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.handleToggleTTS();
       });
     }
 
@@ -231,7 +200,7 @@ export class ChatWidget {
       this.autoResizeTextarea(textarea);
     }
 
-    // Primary action button (send/mic)
+    // Primary action button (send)
     const primaryBtn = this.root.querySelector('[data-action="primary"]');
     if (primaryBtn) {
       primaryBtn.addEventListener('click', () => {
@@ -290,13 +259,11 @@ export class ChatWidget {
   }
 
   /**
-   * Handle primary action (send or voice)
+   * Handle primary action (send)
    */
   protected async handlePrimaryAction(): Promise<void> {
     if (this.inputValue.trim()) {
       await this.handleSendMessage();
-    } else {
-      await this.handleToggleVoice();
     }
   }
 
@@ -304,32 +271,24 @@ export class ChatWidget {
    * Handle send message
    */
   protected async handleSendMessage(): Promise<void> {
-    if (!this.inputValue.trim() || !this.service.isConnected()) {
+    const message = this.inputValue;
+    if (!message.trim()) {
       return;
     }
 
+    this.inputValue = '';
+    
+    // Auto-expand to full if not already
+    if (this.widgetState !== 'full') {
+       this.setWidgetState('full');
+    } else {
+      this.render();
+    }
+
     try {
-      await this.service.sendMessage(this.inputValue);
-      this.inputValue = '';
-      
-      // Auto-expand to full if not already
-      if (this.widgetState !== 'full') {
-         this.setWidgetState('full');
-      }
-      // Note: render() is called automatically via store subscription in sendMessage
+      await this.service.sendMessage(message);
     } catch (error) {
       console.error('[ChatWidget] Failed to send message:', error);
-    }
-  }
-
-  /**
-   * Handle toggle voice recording
-   */
-  protected async handleToggleVoice(): Promise<void> {
-    try {
-      await this.service.toggleVoice();
-    } catch (error) {
-      console.error('[ChatWidget] Failed to toggle voice:', error);
     }
   }
 
@@ -343,17 +302,6 @@ export class ChatWidget {
   }
 
   /**
-   * Handle toggle TTS
-   */
-  protected handleToggleTTS(): void {
-    try {
-      this.service.toggleTTS();
-    } catch (error) {
-      console.error('[ChatWidget] Failed to toggle TTS:', error);
-    }
-  }
-
-  /**
    * Handle close (cross button)
    * Clears messages and effectively transitions to input-only
    */
@@ -361,8 +309,8 @@ export class ChatWidget {
     // Clear messages
     this.service.clearMessages();
 
-    // Switch to input-only state
-    this.setWidgetState('input-only');
+    // Inline embeds keep their stable full-height frame.
+    this.setWidgetState(this.config.mode === 'inline' ? 'full' : 'input-only');
   }
 
   /**
@@ -406,6 +354,10 @@ export class ChatWidget {
   public updateConfig(config: Partial<ChatWidgetConfig>): void {
     // Update internal config
     this.config = { ...this.config, ...config };
+
+    if (config.mode === 'inline') {
+      this.widgetState = 'full';
+    }
 
     // Update language if changed
     if (config.lang) {

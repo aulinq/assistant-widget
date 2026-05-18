@@ -27,6 +27,14 @@ export enum WSMessageType {
   STATUS = 'status',
   AUDIO = 'audio',
   SERVICE_MESSAGE = 'service.message',
+
+  // Agent Runtime types
+  DELTA = 'delta',
+  THOUGHT = 'thought',
+  DONE = 'done',
+  TOOL_CALL = 'tool_call',
+  TOOL_RES = 'tool_res',
+  TYPING = 'typing',
 }
 
 export type WebSocketMessageType =
@@ -43,7 +51,13 @@ export type WebSocketMessageType =
   | 'error'
   | 'status'
   | 'audio'
-  | 'service.message';
+  | 'service.message'
+  | 'delta'
+  | 'thought'
+  | 'done'
+  | 'tool_call'
+  | 'tool_res'
+  | 'typing';
 
 export interface Message {
   id: string;
@@ -55,9 +69,13 @@ export interface Message {
 }
 
 export type WidgetState = 'minimized' | 'input-only' | 'full';
+export type ChatTransport = 'sse' | 'ws';
 
 export interface ChatConfig {
-  serverUrl: string;
+  serverUrl?: string;         // Deprecated: used to point to chat-service/runtime
+  identityUrl?: string;       // New: identity-service for handshake
+  runtimeUrl?: string;        // New: agent-runtime for streaming
+  transport?: ChatTransport;
   siteToken: string;          // Required: Site token for authentication
   sessionId?: string;
   reconnect?: boolean;
@@ -72,6 +90,11 @@ export interface WebSocketMessage {
   id?: string;
   type: WebSocketMessageType;
   session_id?: string;
+  content?: string;
+  tenant_id?: string;
+  tenant_agent_id?: string;
+  run_id?: string;
+  metadata?: Record<string, unknown>;
   payload?: {
     text?: string;
     content?: string;
@@ -81,6 +104,11 @@ export interface WebSocketMessage {
     message?: string;
     status?: string;
     action?: string;
+    target?: string;
+    details?: unknown;
+    is_final?: boolean;
+    messageType?: string;
+    localized?: Record<string, string>;
     interactionId?: string;
     context?: {
       interaction_id?: string;

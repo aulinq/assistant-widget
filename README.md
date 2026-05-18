@@ -16,9 +16,9 @@ A production-ready, headless chat widget library built with vanilla TypeScript c
 ## Installation
 
 ```bash
-npm install @creastat/assistant-widget
+npm install @aulinq/assistant-widget
 # or
-bun add @creastat/assistant-widget
+bun add @aulinq/assistant-widget
 ```
 
 ## Quick Start
@@ -26,12 +26,13 @@ bun add @creastat/assistant-widget
 ### React Component
 
 ```tsx
-import { ChatWidget } from '@creastat/assistant-widget/react';
+import { ChatWidget } from '@aulinq/assistant-widget/react';
 
 function App() {
   return (
     <ChatWidget
-      serverUrl="ws://localhost:8080/ws"
+      identityUrl="http://localhost:8100"
+      runtimeUrl="http://localhost:8890/v1/chat/stream"
       siteToken="your-site-token"
       title="IO Assistant"
       placeholder="Type a message..."
@@ -47,11 +48,13 @@ function App() {
 ### Vanilla JavaScript
 
 ```ts
-import { ChatService } from '@creastat/assistant-widget';
+import { ChatService } from '@aulinq/assistant-widget';
 
 const chat = new ChatService(
   {
-    serverUrl: 'ws://localhost:8080/ws',
+    identityUrl: 'http://localhost:8100',
+    runtimeUrl: 'http://localhost:8890/v1/chat/stream',
+    siteToken: 'your-site-token',
     debug: true,
   },
   (event) => {
@@ -87,9 +90,12 @@ chat.disconnect();
 
 ```ts
 interface ChatConfig {
-  serverUrl: string;              // WebSocket URL
+  siteToken: string;              // Website token from dashboard
+  identityUrl?: string;           // identity-service base URL
+  runtimeUrl?: string;            // agent-runtime stream or ws URL
+  transport?: 'sse' | 'ws';       // default: 'sse'
+  serverUrl?: string;             // deprecated runtime fallback
   sessionId?: string;             // Optional session ID
-  authToken?: string;             // Optional auth token
   reconnect?: boolean;            // Enable auto-reconnect (default: true)
   reconnectInterval?: number;     // Reconnect delay in ms (default: 3000)
   maxReconnectAttempts?: number;  // Max reconnect attempts (default: 5)
@@ -142,22 +148,15 @@ You can create your own theme by extending the CSS:
 
 ## WebSocket Protocol
 
-The widget uses a structured JSON protocol over WebSocket for all non-binary communication.
+The widget authenticates with `POST /v1/chat/handshake`, then sends each text message to agent-runtime. The default transport is SSE via `POST /v1/chat/stream`; WebSocket is available with `transport: 'ws'` and uses `/v1/chat/ws`.
 
-### Client-to-Server types
-- `input.text`: Plain text user message
-- `input.audio`: Binary audio stream control
-- `input.end`: End of audio input signal
-- `control.config`: Update session configuration
+### Runtime events
+- `delta`: Partial assistant text.
+- `thought`, `tool_call`, `tool_res`, `typing`: Status updates.
+- `done`: End of response.
+- `error`: Error message.
 
-### Server-to-Client types
-- `stream.llm`: Partial LLM response chunks
-- `stream.stt`: Real-time transcription results
-- `response.start` / `response.end`: Response lifecycle events
-- `status`: Interaction status updates (thinking, searching, etc.)
-- `service.message`: System notifications
-- `error`: Error messages
-- `audio`: Base64 encoded audio chunks (when not using binary stream)
+Realtime voice is handled by the separate `voice-widget` package.
 
 ## Development
 
@@ -241,4 +240,4 @@ Contributions are welcome! Please read our contributing guidelines first.
 
 ## Credits
 
-Built by Creastat team with ❤️
+Built by Aulinq team with ❤️

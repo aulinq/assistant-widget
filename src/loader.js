@@ -1,5 +1,5 @@
 /**
- * Creastat Chat Widget Loader
+ * Aulinq Chat Widget Loader
  * Google Analytics-style async loader
  *
  * This file serves as a template for generating user-specific loader scripts
@@ -9,11 +9,13 @@
 (function() {
   // Configuration (will be replaced by dashboard)
   var config = {
-    cdnUrl: 'CDN_URL', // e.g., 'https://cdn.creastat.com/assistant-widget/v1/embed.js'
+    cdnUrl: 'CDN_URL', // e.g., 'https://cdn.aulinq.com/assistant-widget/v2/embed.js'
     siteToken: 'SITE_TOKEN', // User's unique site token
     theme: 'THEME', // Theme variant (brown, dark, light, yellow, red, green, blue, custom)
     customColors: CUSTOM_COLORS, // Custom colors object or null
-    serverUrl: 'SERVER_URL', // WebSocket server URL
+    identityUrl: 'IDENTITY_URL', // identity-service base URL
+    runtimeUrl: 'RUNTIME_URL', // agent-runtime /v1/chat/stream URL
+    transport: 'sse',
     title: 'TITLE', // Chat widget title
     placeholder: 'PLACEHOLDER' // Input placeholder text
   };
@@ -35,7 +37,7 @@
 
   // Error handling
   script.onerror = function() {
-    console.error('Failed to load Creastat Chat Widget');
+    console.error('Failed to load Aulinq Chat Widget');
   };
 
   // Insert script into DOM

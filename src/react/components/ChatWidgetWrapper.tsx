@@ -58,7 +58,7 @@ export function ChatWidgetWrapper({
       widget.destroy();
       widgetRef.current = null;
     };
-  }, [config.serverUrl, config.siteToken]);
+  }, [config.serverUrl, config.identityUrl, config.runtimeUrl, config.transport, config.siteToken, config.mode]);
 
   // Handle dynamic property updates (re-uses existing instance)
   useEffect(() => {
