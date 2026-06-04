@@ -25,6 +25,8 @@ describe("ChatService", () => {
 
     await service.connect();
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v1/chat/handshake?siteToken=site-token");
     expect(service.isConnected()).toBe(true);
     expect(service.getSessionId()).toBe("session-1");
 

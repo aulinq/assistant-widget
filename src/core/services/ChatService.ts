@@ -40,19 +40,109 @@ export class ChatService {
   private connectionPromise: Promise<void> | null = null;
   private activeStreamAbort: AbortController | null = null;
   public store: ChatStore;
+  public lastRunId: string = '';
 
   constructor(config: ChatConfig, eventHandler?: ChatEventHandler) {
     this.config = {
       reconnect: true,
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
-      debug: false,
+      debug: true, // Force debug logs
       transport: 'sse',
       ...config,
     };
-    this.sessionId = config.sessionId || generateId();
+
+    console.log('[ChatService] Initializing with siteToken:', config.siteToken, 'config:', config);
+
+    let savedSessionId: string | null = null;
+    let savedMessages: Message[] = [];
+    let savedHandshakeSession: HandshakeSession | null = null;
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const lastActivityStr = localStorage.getItem(`aulinq:chat_last_activity:${config.siteToken}`);
+        const inactivityLimit = 15 * 60 * 1000; // 15 minutes inactivity limit
+        const isStale = lastActivityStr && (Date.now() - parseInt(lastActivityStr, 10)) > inactivityLimit;
+
+        if (isStale) {
+          console.log('[ChatService] Chat session expired due to inactivity. Wiping localStorage.');
+          localStorage.removeItem(`aulinq:chat_history:${config.siteToken}`);
+          localStorage.removeItem(`aulinq:chat_session:${config.siteToken}`);
+          localStorage.removeItem(`aulinq:chat_session_data:${config.siteToken}`);
+          localStorage.removeItem(`aulinq:chat_last_activity:${config.siteToken}`);
+        } else {
+          savedSessionId = localStorage.getItem(`aulinq:chat_session:${config.siteToken}`);
+          const historyJson = localStorage.getItem(`aulinq:chat_history:${config.siteToken}`);
+          if (historyJson) {
+            savedMessages = JSON.parse(historyJson);
+          }
+
+          const sessionDataJson = localStorage.getItem(`aulinq:chat_session_data:${config.siteToken}`);
+          if (sessionDataJson) {
+            const parsed = JSON.parse(sessionDataJson) as HandshakeSession;
+            // check if expired. parsed.expiresAt can be ISO string or timestamp number
+            const expiresAtTime = typeof parsed.expiresAt === 'number'
+              ? parsed.expiresAt
+              : (parsed.expiresAt ? new Date(parsed.expiresAt).getTime() : 0);
+
+            // Give a 5-minute grace period to avoid token expiring during an active chat session
+            if (expiresAtTime > Date.now() + 5 * 60 * 1000) {
+              savedHandshakeSession = parsed;
+              savedSessionId = parsed.sessionId;
+              console.log('[ChatService] Found valid cached chat session token in localStorage. Will bypass handshake.');
+            } else {
+              console.log('[ChatService] Cached chat session token is expired or close to expiry. Will perform handshake.');
+              localStorage.removeItem(`aulinq:chat_session_data:${config.siteToken}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load chat session/history from localStorage:', e);
+      }
+    }
+
+    this.sessionId = config.sessionId || savedSessionId || generateId();
+    if (savedHandshakeSession) {
+      this.session = savedHandshakeSession;
+    }
+
+    if (typeof window !== 'undefined' && window.localStorage && this.sessionId) {
+      try {
+        localStorage.setItem(`aulinq:chat_session:${config.siteToken}`, this.sessionId);
+      } catch (e) {
+        console.error('Failed to save chat session ID to localStorage:', e);
+      }
+    }
+
     this.eventHandler = eventHandler;
-    this.store = new ChatStore();
+    let initialMessages = savedMessages;
+    if (initialMessages.length === 0 && config.welcomeMessage) {
+      initialMessages = [
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: config.welcomeMessage,
+          timestamp: Date.now(),
+          type: 'text',
+        },
+      ];
+    }
+    this.store = new ChatStore({ messages: initialMessages });
+
+    this.store.subscribe((state) => {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          const persistable = state.messages.filter(m => m.type !== 'status');
+          console.log('[ChatService] Saving messages to localStorage under key:', `aulinq:chat_history:${config.siteToken}`, 'messages:', persistable);
+          localStorage.setItem(`aulinq:chat_history:${config.siteToken}`, JSON.stringify(persistable));
+          
+          // Save last activity timestamp to track inactivity
+          localStorage.setItem(`aulinq:chat_last_activity:${config.siteToken}`, Date.now().toString());
+        } catch (e) {
+          console.error('Failed to persist chat history to localStorage:', e);
+        }
+      }
+    });
   }
 
   /**
@@ -73,8 +163,13 @@ export class ChatService {
       this.emit({ type: 'connecting' });
 
       try {
-        this.session = await this.authenticate();
+        if (!this.session?.token) {
+          this.session = await this.authenticate();
+        }
         this.sessionId = this.session.sessionId;
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(`aulinq:chat_session:${this.config.siteToken}`, this.sessionId);
+        }
         this.store.setConnected(true);
         this.emit({ type: 'connected' });
       } catch (error) {
@@ -149,10 +244,62 @@ export class ChatService {
 
   clearMessages(): void {
     this.store.clearMessages();
+    if (this.config.welcomeMessage) {
+      this.store.addMessage({
+        id: 'welcome',
+        role: 'assistant',
+        content: this.config.welcomeMessage,
+        timestamp: Date.now(),
+        type: 'text',
+      });
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.removeItem(`aulinq:chat_history:${this.config.siteToken}`);
+        localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
+        localStorage.removeItem(`aulinq:chat_last_activity:${this.config.siteToken}`);
+        this.sessionId = generateId();
+        this.session = null;
+        localStorage.setItem(`aulinq:chat_session:${this.config.siteToken}`, this.sessionId);
+      } catch (e) {
+        console.error('Failed to clear chat session/history from localStorage:', e);
+      }
+    }
   }
 
   async sendControl(action: string): Promise<void> {
     this.log('Ignoring control message for text runtime:', action);
+  }
+
+  async sendFeedback(runId: string, rating: string, comment?: string): Promise<void> {
+    const baseUrl = this.resolveRuntimeUrl('sse').replace(/\/v1\/chat\/stream\/?$/, '');
+    const url = `${baseUrl}/v1/chat/feedback`;
+
+    const token = this.session?.token;
+    if (!token) {
+      this.log('Cannot send feedback: no active session token');
+      return;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          run_id: runId,
+          rating,
+          comment: comment || '',
+          session_key: this.sessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        this.log('Feedback send failed:', response.status, await response.text());
+      }
+    } catch (error) {
+      this.log('Feedback send error:', error);
+    }
   }
 
   isConnected(): boolean {
@@ -204,36 +351,74 @@ export class ChatService {
       return this.session;
     }
 
-    const baseUrl = this.resolveIdentityBaseUrl();
-    const url = `${baseUrl}/v1/chat/handshake`;
+    const siteToken = this.config.siteToken;
 
-    this.log('Authenticating with handshake endpoint:', url);
+    // Check global pending handshakes to prevent concurrent requests in Strict Mode
+    if (typeof window !== 'undefined') {
+      const globalPending = (window as any).__aulinq_pending_handshakes || {};
+      (window as any).__aulinq_pending_handshakes = globalPending;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ siteToken: this.config.siteToken }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.log('Authentication failed:', errorText);
-      throw new Error(`Authentication failed: ${this.formatHTTPError(response, errorText)}`);
+      if (globalPending[siteToken]) {
+        this.log('Reusing pending handshake request for siteToken:', siteToken);
+        return globalPending[siteToken];
+      }
     }
 
-    const data = await response.json() as HandshakeResponse;
-    if (!data.token) {
-      throw new Error('Authentication failed: missing token');
+    const handshakePromise = (async () => {
+      const baseUrl = this.resolveIdentityBaseUrl();
+      const url = new URL(`${baseUrl}/v1/chat/handshake`);
+      url.searchParams.set('siteToken', siteToken);
+
+      this.log('Authenticating with handshake endpoint:', url.toString());
+
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteToken: siteToken }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.log('Authentication failed:', errorText);
+        throw new Error(`Authentication failed: ${this.formatHTTPError(response, errorText)}`);
+      }
+
+      const data = await response.json() as HandshakeResponse;
+      if (!data.token) {
+        throw new Error('Authentication failed: missing token');
+      }
+
+      const session = {
+        token: data.token,
+        sessionId: this.config.sessionId || data.sessionId || data.session_id || this.sessionId || generateId(),
+        expiresAt: data.expires_at,
+      };
+
+      this.log('Authentication successful');
+
+      // Cache the successful session data in localStorage
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.setItem(`aulinq:chat_session_data:${siteToken}`, JSON.stringify(session));
+        } catch (e) {
+          console.error('Failed to save chat session data to localStorage:', e);
+        }
+      }
+
+      return session;
+    })();
+
+    if (typeof window !== 'undefined') {
+      const globalPending = (window as any).__aulinq_pending_handshakes;
+      globalPending[siteToken] = handshakePromise;
+
+      // Clean up when the promise resolves or rejects
+      handshakePromise.finally(() => {
+        delete globalPending[siteToken];
+      });
     }
 
-    const session = {
-      token: data.token,
-      sessionId: this.config.sessionId || data.sessionId || data.session_id || this.sessionId,
-      expiresAt: data.expires_at,
-    };
-
-    this.log('Authentication successful');
-    return session;
+    return handshakePromise;
   }
 
   private async sendViaSSE(request: ChatStreamRequest): Promise<void> {
@@ -257,6 +442,26 @@ export class ChatService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        const isAuthError = response.status === 401 || 
+                            errorText.includes('session expired') || 
+                            errorText.includes('invalid token');
+        if (isAuthError) {
+          this.log('Session expired or invalid. Wiping cached session and re-authenticating.');
+          if (typeof window !== 'undefined' && window.localStorage) {
+            try {
+              localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
+            } catch (e) {
+              console.error(e);
+            }
+          }
+          this.session = null;
+          await this.connect();
+          const restored = this.session as HandshakeSession | null;
+          if (restored?.token) {
+            request.token = restored.token;
+            return this.sendViaSSE(request);
+          }
+        }
         throw new Error(`Runtime stream failed: ${this.formatHTTPError(response, errorText)}`);
       }
 
@@ -315,13 +520,16 @@ export class ChatService {
     if (dataLines.length === 0) return;
 
     const raw = dataLines.join('\n').trim();
+    console.log('[ChatService] Raw SSE event received:', raw);
     if (!raw || raw === '[DONE]') {
       this.handleResponseEnd();
       return;
     }
 
     try {
-      this.handleRuntimeEvent(JSON.parse(raw) as WebSocketMessage);
+      const parsed = JSON.parse(raw) as WebSocketMessage;
+      console.log('[ChatService] Parsed SSE event type:', parsed.type, 'run_id:', parsed.run_id);
+      this.handleRuntimeEvent(parsed);
     } catch (error) {
       this.log('Failed to parse SSE event:', error, raw);
     }
@@ -352,9 +560,33 @@ export class ChatService {
         ws.send(JSON.stringify(request));
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data) as WebSocketMessage;
+          const isAuthError = data.type === WSMessageType.ERROR && data.content && (
+            data.content.includes('session expired') || 
+            data.content.includes('invalid token')
+          );
+          if (isAuthError) {
+            this.log('Session expired or invalid (WS). Wiping cached session and re-authenticating.');
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            this.session = null;
+            ws.close(1008, 'Session expired');
+            settle();
+            await this.connect();
+            const restoredWs = this.session as HandshakeSession | null;
+            if (restoredWs?.token) {
+              request.token = restoredWs.token;
+              await this.sendViaWebSocket(request);
+            }
+            return;
+          }
           this.handleRuntimeEvent(data);
           if (data.type === WSMessageType.DONE || data.type === WSMessageType.ERROR) {
             ws.close(1000, 'Message complete');
@@ -382,6 +614,10 @@ export class ChatService {
   private handleRuntimeEvent(data: WebSocketMessage): void {
     this.log('Received runtime event:', data);
 
+    if (data.run_id) {
+      this.lastRunId = data.run_id;
+    }
+
     switch (data.type) {
       case WSMessageType.STREAM_STT:
         this.handleSttMessage(data);
@@ -405,6 +641,19 @@ export class ChatService {
       case WSMessageType.RESPONSE_END:
         if (!this.currentMessageId && data.content) {
           this.handleLlmMessage({ ...data, type: WSMessageType.STREAM_LLM });
+        }
+        // Store run_id on the last assistant message for feedback correlation
+        if (data.run_id) {
+          const messages = this.store.getState().messages;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role === 'assistant' && m.type === 'text') {
+              this.store.updateMessageDetails(m.id, {
+                metadata: { ...m.metadata, run_id: data.run_id },
+              });
+              break;
+            }
+          }
         }
         this.handleResponseEnd();
         break;
@@ -455,10 +704,9 @@ export class ChatService {
     const delta = data.payload?.delta || (data.type === WSMessageType.DELTA ? data.content : '') || '';
     const content = data.payload?.content || (data.type === WSMessageType.DELTA ? '' : data.content) || '';
     const chunk = delta || content;
+    const runId = data.run_id;
 
     if (!chunk && !this.currentMessageId) return;
-
-    const messages = this.store.getState().messages;
 
     if (!this.currentMessageId) {
       this.store.removeStatusMessages();
@@ -470,15 +718,22 @@ export class ChatService {
         content: chunk,
         timestamp: Date.now(),
         type: 'text',
+        metadata: runId ? { run_id: runId } : undefined,
       });
       this.store.setTyping(true);
       this.emit({ type: 'typing-start' });
       return;
     }
 
-    const current = messages.find((message) => message.id === this.currentMessageId);
+    const current = this.store.getState().messages.find((message) => message.id === this.currentMessageId);
     if (current) {
       this.store.updateMessage(this.currentMessageId, current.content + chunk);
+      // Update run_id on the message if not already set
+      if (runId && !current.metadata?.run_id) {
+        this.store.updateMessageDetails(this.currentMessageId, {
+          metadata: { ...current.metadata, run_id: runId },
+        });
+      }
     }
   }
 

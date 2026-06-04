@@ -35,6 +35,7 @@ export interface WidgetScriptConfig {
   transport?: 'sse' | 'ws';
   mode?: 'floating' | 'inline';
   containerId?: string;
+  position?: string;
 }
 
 /**
@@ -55,6 +56,7 @@ export function generateWidgetScript(config: WidgetScriptConfig): string {
     transport = 'sse',
     mode = 'floating',
     containerId = 'aulinq-assistant-widget',
+    position,
   } = config;
 
   // Format custom colors for script
@@ -80,14 +82,15 @@ ${mode === 'inline' ? `<div id="${containerId}"></div>\n` : ''}<script>
     placeholder: '${placeholder}',
     lang: '${lang}',
     mode: '${mode}'${mode === 'inline' ? `,
-    containerId: '${containerId}'` : ''}
+    containerId: '${containerId}'` : ''}${position ? `,
+    position: '${position}'` : ''}
   };
 
-  window.IOChat = window.IOChat || function() {
-    (window.IOChat.q = window.IOChat.q || []).push(arguments);
+  window.aulinq = window.aulinq || function() {
+    (window.aulinq.q = window.aulinq.q || []).push(arguments);
   };
-  window.IOChat.l = +new Date();
-  window.IOChat.config = config;
+  window.aulinq.l = +new Date();
+  window.aulinq.config = config;
 
   var script = document.createElement('script');
   script.async = true;
@@ -120,14 +123,16 @@ export function generateWidgetScriptMinified(config: WidgetScriptConfig): string
     transport = 'sse',
     mode = 'floating',
     containerId = 'aulinq-assistant-widget',
+    position,
   } = config;
 
   const customColorsStr = customColors ? JSON.stringify(customColors) : 'null';
   const serverUrlStr = serverUrl ? `,serverUrl:'${serverUrl}'` : '';
   const inlinePrefix = mode === 'inline' ? `<div id="${containerId}"></div>` : '';
   const containerStr = mode === 'inline' ? `,containerId:'${containerId}'` : '';
+  const positionStr = position ? `,position:'${position}'` : '';
 
-  return `${inlinePrefix}<script>(function(){var c={cdnUrl:'${cdnUrl}',siteToken:'${siteToken}',theme:'${theme}',customColors:${customColorsStr}${serverUrlStr},identityUrl:'${identityUrl}',runtimeUrl:'${runtimeUrl}',transport:'${transport}',title:'${title}',placeholder:'${placeholder}',lang:'${lang}',mode:'${mode}'${containerStr}};window.IOChat=window.IOChat||function(){(window.IOChat.q=window.IOChat.q || []).push(arguments)};window.IOChat.l=+new Date();window.IOChat.config=c;var s=document.createElement('script');s.async=true;s.src=c.cdnUrl;s.onerror=function(){console.error('Failed to load Aulinq Chat Widget')};var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)})();</script>`;
+  return `${inlinePrefix}<script>(function(){var c={cdnUrl:'${cdnUrl}',siteToken:'${siteToken}',theme:'${theme}',customColors:${customColorsStr}${serverUrlStr},identityUrl:'${identityUrl}',runtimeUrl:'${runtimeUrl}',transport:'${transport}',title:'${title}',placeholder:'${placeholder}',lang:'${lang}',mode:'${mode}'${containerStr}${positionStr}};window.aulinq=window.aulinq||function(){(window.aulinq.q=window.aulinq.q || []).push(arguments)};window.aulinq.l=+new Date();window.aulinq.config=c;var s=document.createElement('script');s.async=true;s.src=c.cdnUrl;s.onerror=function(){console.error('Failed to load Aulinq Chat Widget')};var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)})();</script>`;
 }
 
 /**

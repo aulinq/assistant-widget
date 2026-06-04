@@ -7,6 +7,7 @@ export interface ChatWidgetWrapperProps extends Omit<ChatWidgetConfig, 'containe
   variant?: ThemeVariant;
   customColors?: ThemeColorPalette;
   className?: string;
+  position?: string;
 }
 
 /**
@@ -29,6 +30,7 @@ export function ChatWidgetWrapper({
   // Handle critical config changes (requires re-instantiation)
   useEffect(() => {
     if (!containerRef.current) return;
+    const effectivePosition = config.mode === 'inline' ? undefined : config.position;
 
     // Create theme instance
     const themeInstance = new DefaultTheme({ 
@@ -37,6 +39,9 @@ export function ChatWidgetWrapper({
       variant,
       customColors,
       lang,
+      mode: config.mode,
+      position: effectivePosition,
+      suggestions: config.suggestions,
     });
 
     // Create widget instance
@@ -46,6 +51,7 @@ export function ChatWidgetWrapper({
         title,
         placeholder,
         lang,
+        position: effectivePosition,
         container: containerRef.current,
       },
       themeInstance
@@ -69,9 +75,12 @@ export function ChatWidgetWrapper({
         lang,
         variant,
         customColors,
+        position: config.mode === 'inline' ? undefined : config.position,
+        welcomeMessage: config.welcomeMessage,
+        suggestions: config.suggestions,
       });
     }
-  }, [title, placeholder, lang, variant, customColors]);
+  }, [title, placeholder, lang, variant, customColors, config.position, config.mode, config.welcomeMessage, config.suggestions]);
 
 
   return <div ref={containerRef} className={`assistant-widget-container ${className}`.trim()} />;

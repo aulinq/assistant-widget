@@ -84,6 +84,8 @@ export interface ChatConfig {
   autoConnect?: boolean;
   debug?: boolean;
   initialLanguage?: string;
+  welcomeMessage?: string;
+  suggestions?: string[];
 }
 
 export interface WebSocketMessage {

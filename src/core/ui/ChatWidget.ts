@@ -11,6 +11,9 @@ export interface ChatWidgetConfig extends ChatConfig {
   variant?: string;
   customColors?: any;
   mode?: 'floating' | 'inline';
+  position?: string;
+  welcomeMessage?: string;
+  suggestions?: string[];
 }
 
 export interface ChatWidgetTheme {
@@ -41,11 +44,10 @@ export class ChatWidget {
       ...config,
     };
     this.theme = theme;
-    this.widgetState = this.config.mode === 'inline' ? 'full' : 'minimized';
 
     // Find or create container
     this.container = config.container || this.createDefaultContainer();
-    this.container.classList.add(`assistant-widget-container-${this.config.mode || 'floating'}`);
+    this.syncContainerClasses();
 
     // Initialize chat service
     const chatServiceConfig = {
@@ -58,6 +60,9 @@ export class ChatWidget {
         console.log('[ChatWidget] Event:', event);
       }
     });
+
+    const hasMessages = this.service.store.getState().messages.length > 0;
+    this.widgetState = this.config.mode === 'inline' ? 'full' : (hasMessages ? 'full' : 'minimized');
 
     // Subscribe to state changes
     this.unsubscribe = this.service.store.subscribe(() => {
@@ -83,6 +88,25 @@ export class ChatWidget {
     container.className = 'assistant-widget-container';
     document.body.appendChild(container);
     return container;
+  }
+
+  private syncContainerClasses(): void {
+    const mode = this.config.mode || 'floating';
+
+    this.container.classList.remove(
+      'assistant-widget-container-floating',
+      'assistant-widget-container-inline',
+      'assistant-widget-container-bottom',
+      'assistant-widget-container-top',
+      'assistant-widget-container-left',
+      'assistant-widget-container-right'
+    );
+
+    this.container.classList.add(`assistant-widget-container-${mode}`);
+
+    if (mode !== 'inline' && this.config.position) {
+      this.container.classList.add(`assistant-widget-container-${this.config.position}`);
+    }
   }
 
   /**
@@ -208,13 +232,57 @@ export class ChatWidget {
       });
     }
 
+    // Suggestion chips
+    const suggestionChips = this.root.querySelectorAll('[data-action="suggestion"]');
+    suggestionChips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const text = chip.getAttribute('data-suggestion');
+        if (text) {
+          this.inputValue = text;
+          this.handleSendMessage();
+        }
+      });
+    });
+
     // Copy message buttons
     const copyBtns = this.root.querySelectorAll('[data-action="copy"]');
     copyBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const content = btn.getAttribute('data-content');
         if (content) {
-          this.handleCopyMessage(content);
+          this.handleCopyMessage(content, btn as HTMLElement);
+        }
+      });
+    });
+
+    const likeBtns = this.root.querySelectorAll('[data-action="like"]');
+    likeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        let runId = btn.getAttribute('data-run-id');
+        console.log('[ChatWidget] Like button clicked. Attribute run-id:', runId, 'Fallback lastRunId:', (this.service as any).lastRunId);
+        if (!runId) {
+          runId = (this.service as any).lastRunId || '';
+        }
+        if (runId) {
+          this.handleRateMessage(runId, 'like');
+        } else {
+          console.warn('[ChatWidget] Like clicked but no runId is available (both attribute and fallback are empty).');
+        }
+      });
+    });
+
+    const dislikeBtns = this.root.querySelectorAll('[data-action="dislike"]');
+    dislikeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        let runId = btn.getAttribute('data-run-id');
+        console.log('[ChatWidget] Dislike button clicked. Attribute run-id:', runId, 'Fallback lastRunId:', (this.service as any).lastRunId);
+        if (!runId) {
+          runId = (this.service as any).lastRunId || '';
+        }
+        if (runId) {
+          this.handleRateMessage(runId, 'dislike');
+        } else {
+          console.warn('[ChatWidget] Dislike clicked but no runId is available (both attribute and fallback are empty).');
         }
       });
     });
@@ -292,13 +360,44 @@ export class ChatWidget {
     }
   }
 
-  /**
-   * Handle copy message
-   */
-  protected handleCopyMessage(content: string): void {
-    navigator.clipboard.writeText(content).catch((error) => {
+  protected handleCopyMessage(content: string, btn?: HTMLElement): void {
+    navigator.clipboard.writeText(content).then(() => {
+      if (btn) {
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.classList.remove('copied');
+        }, 800);
+      }
+    }).catch((error) => {
       console.error('[ChatWidget] Failed to copy:', error);
     });
+  }
+
+  protected async handleRateMessage(runId: string, rating: string): Promise<void> {
+    const messages = this.service.store.getState().messages;
+    let newRating = rating;
+    for (const msg of messages) {
+      if (msg.metadata?.run_id === runId) {
+        if (msg.metadata?.rating === rating) {
+          newRating = ''; // toggle off
+        }
+        break;
+      }
+    }
+
+    try {
+      await this.service.sendFeedback(runId, newRating);
+      for (const msg of messages) {
+        if (msg.metadata?.run_id === runId) {
+          this.service.store.updateMessageDetails(msg.id, {
+            metadata: { ...msg.metadata, rating: newRating },
+          });
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('[ChatWidget] Failed to send feedback:', error);
+    }
   }
 
   /**
@@ -346,6 +445,16 @@ export class ChatWidget {
     if (this.root) {
       this.root.remove();
     }
+    // Clean up container classes added by this widget to allow safe container reuse in React/Next.js
+    this.container.classList.remove(
+      `assistant-widget-container-${this.config.mode || 'floating'}`,
+      'assistant-widget-container-floating',
+      'assistant-widget-container-inline',
+      'assistant-widget-container-bottom',
+      'assistant-widget-container-top',
+      'assistant-widget-container-left',
+      'assistant-widget-container-right'
+    );
   }
 
   /**
@@ -354,6 +463,7 @@ export class ChatWidget {
   public updateConfig(config: Partial<ChatWidgetConfig>): void {
     // Update internal config
     this.config = { ...this.config, ...config };
+    this.syncContainerClasses();
 
     if (config.mode === 'inline') {
       this.widgetState = 'full';

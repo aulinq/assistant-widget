@@ -30,7 +30,7 @@ declare global {
       }) => ChatWidget;
       version: string;
     };
-    IOChat?: {
+    aulinq?: {
       (command: string, ...args: unknown[]): void;
       q?: unknown[][];
       l?: number;
@@ -48,6 +48,7 @@ declare global {
         lang?: 'ru' | 'en';
         mode?: 'floating' | 'inline';
         containerId?: string;
+        position?: string;
       };
     };
   }
@@ -83,6 +84,8 @@ window.ChatWidget = {
       variant: variant,
       customColors: customColors,
       lang: widgetConfig.lang,
+      mode: widgetConfig.mode,
+      position: widgetConfig.position,
     });
 
     // Create widget
@@ -97,11 +100,11 @@ window.ChatWidget = {
   version: '2.2.0',
 };
 
-// Auto-initialize from IOChat loader or data attributes
+// Auto-initialize from aulinq loader or data attributes
 function autoInitialize() {
-  // Check if IOChat loader is present with config
-  if (window.IOChat && window.IOChat.config) {
-    const config = window.IOChat.config;
+  // Check if aulinq loader is present with config
+  if (window.aulinq && window.aulinq.config) {
+    const config = window.aulinq.config;
 
     // Only auto-init if we have required fields
     if (config.siteToken) {
@@ -127,6 +130,7 @@ function autoInitialize() {
         const container = document.getElementById(config.containerId);
         if (container) initConfig.container = container;
       }
+      if (config.position) initConfig.position = config.position;
 
       window.ChatWidget.init(initConfig);
       return;
@@ -158,6 +162,8 @@ function autoInitialize() {
       }
     }
 
+    const position = script.getAttribute('data-position') as string | null;
+
     if (siteToken) {
       window.ChatWidget.init({
         serverUrl: serverUrl || undefined,
@@ -172,6 +178,7 @@ function autoInitialize() {
         container: containerId ? document.getElementById(containerId) || undefined : undefined,
         customColors,
         lang: (script.getAttribute('data-lang') as 'ru' | 'en') || undefined,
+        position: position || undefined,
       });
     }
   }

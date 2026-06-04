@@ -21,13 +21,13 @@
   };
 
   // Queue for commands before widget loads
-  window.IOChat = window.IOChat || function() {
-    (window.IOChat.q = window.IOChat.q || []).push(arguments);
+  window.aulinq = window.aulinq || function() {
+    (window.aulinq.q = window.aulinq.q || []).push(arguments);
   };
-  window.IOChat.l = +new Date();
+  window.aulinq.l = +new Date();
 
   // Store config for widget initialization
-  window.IOChat.config = config;
+  window.aulinq.config = config;
 
   // Load the widget script asynchronously
   var script = document.createElement('script');

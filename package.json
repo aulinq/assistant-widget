@@ -1,6 +1,6 @@
 {
   "name": "@aulinq/assistant-widget",
-  "version": "1.0.9",
+  "version": "1.0.22",
   "description": "Headless chat widget library with vanilla JS core and React components",
   "keywords": [
     "chat",
@@ -50,6 +50,7 @@
     "preview": "vite preview",
     "dev:demo": "vite",
     "test": "vitest run",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run type-check && npm run lint && npm run build",
     "release": "npm publish --access public"
   },
