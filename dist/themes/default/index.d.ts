@@ -9,6 +9,8 @@ export interface ThemeColorPalette {
     glass?: string;
     textLight?: string;
     textMuted?: string;
+    linkColor?: string;
+    linkHover?: string;
 }
 export type ThemeVariant = 'brown' | 'dark' | 'light' | 'yellow' | 'red' | 'green' | 'blue' | 'purple' | 'custom';
 export interface DefaultThemeConfig {

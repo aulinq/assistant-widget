@@ -12,6 +12,8 @@ export interface ChatWidgetConfig extends ChatConfig {
     position?: string;
     welcomeMessage?: string;
     suggestions?: string[];
+    /** When true, widget starts collapsed even if it has messages/welcome message */
+    startMinimized?: boolean;
 }
 export interface ChatWidgetTheme {
     render(state: WidgetState, chatState: ChatState, hasInput: boolean): string;
@@ -31,6 +33,14 @@ export declare class ChatWidget {
     protected unsubscribe?: () => void;
     protected root?: HTMLElement;
     protected theme: ChatWidgetTheme;
+    private displayedMessageContent;
+    private targetMessageContent;
+    private revealTimers;
+    private scrollFrame;
+    private wasPresentationStreaming;
+    private lastRenderedMessageSignature;
+    private readonly messageRevealDelayMs;
+    private readonly bottomFollowThresholdPx;
     constructor(config: ChatWidgetConfig, theme: ChatWidgetTheme);
     /**
      * Create default container element
@@ -53,10 +63,17 @@ export declare class ChatWidget {
      * Auto-resize textarea based on content
      */
     protected autoResizeTextarea(textarea: HTMLTextAreaElement): void;
-    /**
-     * Scroll messages to bottom
-     */
-    protected scrollToBottom(): void;
+    private getMessagesScrollSnapshot;
+    private syncMessagesScroll;
+    private restoreMessagesScroll;
+    private getMessageSignature;
+    private hasPresentationStreaming;
+    private seedPresentationState;
+    private buildPresentationState;
+    private shouldRevealMessage;
+    private scheduleMessageReveal;
+    private getRevealCount;
+    private prunePresentationState;
     /**
      * Handle header click
      */
@@ -96,6 +113,7 @@ export declare class ChatWidget {
      * Update widget configuration dynamically
      */
     updateConfig(config: Partial<ChatWidgetConfig>): void;
+    private clearPresentationState;
     /**
      * Render markdown content
      */

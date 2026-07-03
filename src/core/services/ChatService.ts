@@ -29,6 +29,83 @@ type ChatStreamRequest = {
   session_key: string;
 };
 
+type StatusLocale = 'en' | 'es' | 'ru' | 'pt' | 'fr' | 'de' | 'it';
+
+type StatusKey =
+  | 'thinking'
+  | 'thinking_deeper'
+  | 'rag_search'
+  | 'rag_found'
+  | 'rag_empty'
+  | 'tool_start'
+  | 'tool_end';
+
+const STATUS_COPY: Record<StatusLocale, Record<StatusKey, string>> = {
+  en: {
+    thinking: 'Thinking...',
+    thinking_deeper: 'Thinking it through...',
+    rag_search: 'Checking the knowledge base...',
+    rag_found: 'Reviewing the relevant details...',
+    rag_empty: 'Checking what I know...',
+    tool_start: 'Working with tools...',
+    tool_end: 'Finishing up...',
+  },
+  es: {
+    thinking: 'Pensando...',
+    thinking_deeper: 'Dandole una vuelta mas...',
+    rag_search: 'Consultando la base de conocimiento...',
+    rag_found: 'Revisando los detalles relevantes...',
+    rag_empty: 'Revisando lo que se...',
+    tool_start: 'Usando herramientas...',
+    tool_end: 'Terminando...',
+  },
+  ru: {
+    thinking: 'Думаю...',
+    thinking_deeper: 'Обдумываю глубже...',
+    rag_search: 'Проверяю базу знаний...',
+    rag_found: 'Изучаю найденные детали...',
+    rag_empty: 'Сверяюсь с тем, что уже знаю...',
+    tool_start: 'Работаю с инструментами...',
+    tool_end: 'Завершаю...',
+  },
+  pt: {
+    thinking: 'Pensando...',
+    thinking_deeper: 'Pensando melhor...',
+    rag_search: 'Consultando a base de conhecimento...',
+    rag_found: 'Revisando os detalhes relevantes...',
+    rag_empty: 'Verificando o que eu sei...',
+    tool_start: 'Usando ferramentas...',
+    tool_end: 'Finalizando...',
+  },
+  fr: {
+    thinking: 'Je reflechis...',
+    thinking_deeper: 'Je creuse un peu plus...',
+    rag_search: 'Je consulte la base de connaissances...',
+    rag_found: 'Je relis les details utiles...',
+    rag_empty: 'Je verifie ce que je sais...',
+    tool_start: 'J utilise les outils...',
+    tool_end: 'Je termine...',
+  },
+  de: {
+    thinking: 'Ich denke nach...',
+    thinking_deeper: 'Ich denke genauer darueber nach...',
+    rag_search: 'Ich pruefe die Wissensbasis...',
+    rag_found: 'Ich lese die relevanten Details...',
+    rag_empty: 'Ich pruefe, was ich weiss...',
+    tool_start: 'Ich nutze Werkzeuge...',
+    tool_end: 'Ich schliesse ab...',
+  },
+  it: {
+    thinking: 'Sto pensando...',
+    thinking_deeper: 'Ci sto ragionando meglio...',
+    rag_search: 'Controllo la base di conoscenza...',
+    rag_found: 'Rivedo i dettagli rilevanti...',
+    rag_empty: 'Controllo quello che so...',
+    tool_start: 'Uso gli strumenti...',
+    tool_end: 'Sto finendo...',
+  },
+};
+
 export class ChatService {
   private ws: WebSocket | null = null;
   private config: ChatConfig;
@@ -39,6 +116,11 @@ export class ChatService {
   private session: HandshakeSession | null = null;
   private connectionPromise: Promise<void> | null = null;
   private activeStreamAbort: AbortController | null = null;
+  private slowThinkingTimeout: ReturnType<typeof setTimeout> | null = null;
+  private statusClearTimeout: ReturnType<typeof setTimeout> | null = null;
+  private statusTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
+  private storageKey: string;
+  private readonly minActivityStatusVisibleMs = 1400;
   public store: ChatStore;
   public lastRunId: string = '';
 
@@ -51,6 +133,7 @@ export class ChatService {
       transport: 'sse',
       ...config,
     };
+    this.storageKey = this.config.storageKey || config.siteToken;
 
     console.log('[ChatService] Initializing with siteToken:', config.siteToken, 'config:', config);
 
@@ -60,24 +143,24 @@ export class ChatService {
 
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        const lastActivityStr = localStorage.getItem(`aulinq:chat_last_activity:${config.siteToken}`);
+        const lastActivityStr = localStorage.getItem(this.storagePath('chat_last_activity'));
         const inactivityLimit = 15 * 60 * 1000; // 15 minutes inactivity limit
         const isStale = lastActivityStr && (Date.now() - parseInt(lastActivityStr, 10)) > inactivityLimit;
 
         if (isStale) {
           console.log('[ChatService] Chat session expired due to inactivity. Wiping localStorage.');
-          localStorage.removeItem(`aulinq:chat_history:${config.siteToken}`);
-          localStorage.removeItem(`aulinq:chat_session:${config.siteToken}`);
-          localStorage.removeItem(`aulinq:chat_session_data:${config.siteToken}`);
-          localStorage.removeItem(`aulinq:chat_last_activity:${config.siteToken}`);
+          localStorage.removeItem(this.storagePath('chat_history'));
+          localStorage.removeItem(this.storagePath('chat_session'));
+          localStorage.removeItem(this.storagePath('chat_session_data'));
+          localStorage.removeItem(this.storagePath('chat_last_activity'));
         } else {
-          savedSessionId = localStorage.getItem(`aulinq:chat_session:${config.siteToken}`);
-          const historyJson = localStorage.getItem(`aulinq:chat_history:${config.siteToken}`);
+          savedSessionId = localStorage.getItem(this.storagePath('chat_session'));
+          const historyJson = localStorage.getItem(this.storagePath('chat_history'));
           if (historyJson) {
             savedMessages = JSON.parse(historyJson);
           }
 
-          const sessionDataJson = localStorage.getItem(`aulinq:chat_session_data:${config.siteToken}`);
+          const sessionDataJson = localStorage.getItem(this.storagePath('chat_session_data'));
           if (sessionDataJson) {
             const parsed = JSON.parse(sessionDataJson) as HandshakeSession;
             // check if expired. parsed.expiresAt can be ISO string or timestamp number
@@ -92,7 +175,7 @@ export class ChatService {
               console.log('[ChatService] Found valid cached chat session token in localStorage. Will bypass handshake.');
             } else {
               console.log('[ChatService] Cached chat session token is expired or close to expiry. Will perform handshake.');
-              localStorage.removeItem(`aulinq:chat_session_data:${config.siteToken}`);
+              localStorage.removeItem(this.storagePath('chat_session_data'));
             }
           }
         }
@@ -108,7 +191,7 @@ export class ChatService {
 
     if (typeof window !== 'undefined' && window.localStorage && this.sessionId) {
       try {
-        localStorage.setItem(`aulinq:chat_session:${config.siteToken}`, this.sessionId);
+        localStorage.setItem(this.storagePath('chat_session'), this.sessionId);
       } catch (e) {
         console.error('Failed to save chat session ID to localStorage:', e);
       }
@@ -133,16 +216,20 @@ export class ChatService {
       if (typeof window !== 'undefined' && window.localStorage) {
         try {
           const persistable = state.messages.filter(m => m.type !== 'status');
-          console.log('[ChatService] Saving messages to localStorage under key:', `aulinq:chat_history:${config.siteToken}`, 'messages:', persistable);
-          localStorage.setItem(`aulinq:chat_history:${config.siteToken}`, JSON.stringify(persistable));
+          console.log('[ChatService] Saving messages to localStorage under key:', this.storagePath('chat_history'), 'messages:', persistable);
+          localStorage.setItem(this.storagePath('chat_history'), JSON.stringify(persistable));
           
           // Save last activity timestamp to track inactivity
-          localStorage.setItem(`aulinq:chat_last_activity:${config.siteToken}`, Date.now().toString());
+          localStorage.setItem(this.storagePath('chat_last_activity'), Date.now().toString());
         } catch (e) {
           console.error('Failed to persist chat history to localStorage:', e);
         }
       }
     });
+  }
+
+  private storagePath(kind: 'chat_history' | 'chat_session' | 'chat_session_data' | 'chat_last_activity'): string {
+    return `aulinq:${kind}:${this.storageKey}`;
   }
 
   /**
@@ -168,7 +255,7 @@ export class ChatService {
         }
         this.sessionId = this.session.sessionId;
         if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.setItem(`aulinq:chat_session:${this.config.siteToken}`, this.sessionId);
+          localStorage.setItem(this.storagePath('chat_session'), this.sessionId);
         }
         this.store.setConnected(true);
         this.emit({ type: 'connected' });
@@ -194,6 +281,9 @@ export class ChatService {
       this.activeStreamAbort.abort();
       this.activeStreamAbort = null;
     }
+    this.clearSlowThinkingTimer();
+    this.clearStatusClearTimer();
+    this.clearStatusTransitionTimer();
 
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
@@ -226,6 +316,7 @@ export class ChatService {
 
     this.store.setError(null);
     this.store.removeStatusMessages();
+    this.store.setSuggestions([]);
     this.store.addMessage(userMessage);
     this.handleResponseStart();
 
@@ -243,6 +334,8 @@ export class ChatService {
   }
 
   clearMessages(): void {
+    this.clearStatusTransitionTimer();
+    this.clearStatusClearTimer();
     this.store.clearMessages();
     if (this.config.welcomeMessage) {
       this.store.addMessage({
@@ -255,12 +348,12 @@ export class ChatService {
     }
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        localStorage.removeItem(`aulinq:chat_history:${this.config.siteToken}`);
-        localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
-        localStorage.removeItem(`aulinq:chat_last_activity:${this.config.siteToken}`);
+        localStorage.removeItem(this.storagePath('chat_history'));
+        localStorage.removeItem(this.storagePath('chat_session_data'));
+        localStorage.removeItem(this.storagePath('chat_last_activity'));
         this.sessionId = generateId();
         this.session = null;
-        localStorage.setItem(`aulinq:chat_session:${this.config.siteToken}`, this.sessionId);
+        localStorage.setItem(this.storagePath('chat_session'), this.sessionId);
       } catch (e) {
         console.error('Failed to clear chat session/history from localStorage:', e);
       }
@@ -635,7 +728,12 @@ export class ChatService {
         break;
       case WSMessageType.TOOL_CALL:
       case WSMessageType.TOOL_RES:
+      case WSMessageType.TOOL_START:
+      case WSMessageType.TOOL_END:
         this.handleToolMessage(data);
+        break;
+      case WSMessageType.UI_SUGGESTIONS:
+        this.handleSuggestionsMessage(data);
         break;
       case WSMessageType.DONE:
       case WSMessageType.RESPONSE_END:
@@ -709,7 +807,8 @@ export class ChatService {
     if (!chunk && !this.currentMessageId) return;
 
     if (!this.currentMessageId) {
-      this.store.removeStatusMessages();
+      this.clearSlowThinkingTimer();
+      this.deferActivityStatusClear();
       const messageId = generateId();
       this.currentMessageId = messageId;
       this.store.addMessage({
@@ -744,25 +843,29 @@ export class ChatService {
       type: WSMessageType.STATUS,
       payload: {
         status: 'thinking',
-        message: 'Thinking...',
+        message: this.statusText('thinking'),
         target: 'bot',
       },
       timestamp: Date.now(),
     });
+    this.armSlowThinkingTimer();
   }
 
   private handleResponseEnd(): void {
+    this.clearSlowThinkingTimer();
     if (this.store.getState().isTyping) {
       this.store.setTyping(false);
       this.emit({ type: 'typing-end' });
     }
     this.currentMessageId = null;
-    this.store.removeStatusMessages();
+    this.deferActivityStatusClear();
   }
 
   private handleErrorMessage(data: WebSocketMessage): void {
     const errorMsg = data.payload?.message || data.content || 'An error occurred';
 
+    this.clearSlowThinkingTimer();
+    this.clearStatusClearTimer();
     this.store.removeStatusMessages();
     this.handleResponseEnd();
 
@@ -786,18 +889,36 @@ export class ChatService {
     const lastMsg = messages[messages.length - 1];
     const target = (data.payload?.target as string | undefined) || 'bot';
     const role = target === 'user' ? 'user' : 'assistant';
+    const nextStatus = data.payload?.status || data.type;
 
     if (lastMsg && lastMsg.type === 'status' && lastMsg.metadata?.target === target) {
-      this.store.updateMessageDetails(lastMsg.id, {
-        content: message,
-        timestamp: Date.now(),
-        metadata: {
-          ...lastMsg.metadata,
-          status: data.payload?.status || data.type,
-          target,
-          details: data.payload?.details || data.metadata,
-        },
-      });
+      const applyUpdate = () => {
+        this.store.updateMessageDetails(lastMsg.id, {
+          content: message,
+          timestamp: Date.now(),
+          metadata: {
+            ...lastMsg.metadata,
+            status: nextStatus,
+            target,
+            details: data.payload?.details || data.metadata,
+          },
+        });
+        if (this.isActivityStatus(nextStatus) && !this.store.getState().isTyping) {
+          this.deferActivityStatusClear();
+        }
+      };
+      const remainingMs = this.activityStatusTransitionDelay(lastMsg, nextStatus, Date.now());
+
+      this.clearStatusTransitionTimer();
+      if (remainingMs > 0 && lastMsg.metadata?.status !== nextStatus) {
+        this.clearStatusClearTimer();
+        this.statusTransitionTimeout = setTimeout(() => {
+          this.statusTransitionTimeout = null;
+          applyUpdate();
+        }, remainingMs);
+      } else {
+        applyUpdate();
+      }
       return;
     }
 
@@ -808,7 +929,7 @@ export class ChatService {
       timestamp: Date.now(),
       type: 'status',
       metadata: {
-        status: data.payload?.status || data.type,
+        status: nextStatus,
         target,
         details: data.payload?.details || data.metadata,
       },
@@ -834,33 +955,158 @@ export class ChatService {
   }
 
   private handleThoughtMessage(data: WebSocketMessage): void {
-    const text = data.content || data.payload?.text || '';
+    const statusKey = this.statusKeyFromEvent(data);
+    const text = statusKey ? this.statusText(statusKey) : (data.content || data.payload?.text || '');
     if (!text) return;
 
     this.handleStatusMessage({
       type: WSMessageType.STATUS,
       payload: {
-        status: 'thought',
+        status: statusKey || 'thought',
         message: text,
         target: 'bot',
+        details: data.metadata,
       },
       timestamp: Date.now(),
     });
   }
 
   private handleToolMessage(data: WebSocketMessage): void {
-    const text = data.content || data.payload?.text || '';
-    const label = data.type === WSMessageType.TOOL_CALL ? 'Executing tool' : 'Tool result';
+    const statusKey = data.type === WSMessageType.TOOL_RES || data.type === WSMessageType.TOOL_END ? 'tool_end' : 'tool_start';
+    const text = this.statusText(statusKey);
 
     this.handleStatusMessage({
       type: WSMessageType.STATUS,
       payload: {
-        status: data.type,
-        message: text ? `${label}: ${text}` : label,
+        status: statusKey,
+        message: text,
         target: 'bot',
+        details: data.metadata,
       },
       timestamp: Date.now(),
     });
+  }
+
+  private armSlowThinkingTimer(): void {
+    this.clearSlowThinkingTimer();
+    this.slowThinkingTimeout = setTimeout(() => {
+      this.slowThinkingTimeout = null;
+      if (this.currentMessageId) return;
+
+      const messages = this.store.getState().messages;
+      const lastStatus = [...messages].reverse().find((message) => message.type === 'status' && message.metadata?.target === 'bot');
+      if (!lastStatus || lastStatus.metadata?.status !== 'thinking') return;
+
+      this.handleStatusMessage({
+        type: WSMessageType.STATUS,
+        payload: {
+          status: 'thinking_deeper',
+          message: this.statusText('thinking_deeper'),
+          target: 'bot',
+        },
+        timestamp: Date.now(),
+      });
+    }, 6500);
+  }
+
+  private clearSlowThinkingTimer(): void {
+    if (this.slowThinkingTimeout) {
+      clearTimeout(this.slowThinkingTimeout);
+      this.slowThinkingTimeout = null;
+    }
+  }
+
+  private activityStatusTransitionDelay(current: Message, nextStatus: unknown, now: number): number {
+    const currentStatus = current.metadata?.status;
+    const isFastRagResult = currentStatus === 'rag_search' && (nextStatus === 'rag_found' || nextStatus === 'rag_empty');
+    if (!isFastRagResult) {
+      return 0;
+    }
+
+    const visibleForMs = now - current.timestamp;
+    return Math.max(0, this.minActivityStatusVisibleMs - visibleForMs);
+  }
+
+  private deferActivityStatusClear(): void {
+    if (this.statusTransitionTimeout) return;
+
+    const status = this.latestBotStatusMessage();
+    if (!status || !this.isActivityStatus(status.metadata?.status)) {
+      this.store.removeStatusMessages();
+      return;
+    }
+
+    const visibleForMs = Date.now() - status.timestamp;
+    const remainingMs = this.minActivityStatusVisibleMs - visibleForMs;
+    if (remainingMs <= 0) {
+      this.store.removeStatusMessages();
+      return;
+    }
+
+    this.clearStatusClearTimer();
+    this.statusClearTimeout = setTimeout(() => {
+      this.statusClearTimeout = null;
+      this.store.removeStatusMessages();
+    }, remainingMs);
+  }
+
+  private latestBotStatusMessage(): Message | undefined {
+    return [...this.store.getState().messages]
+      .reverse()
+      .find((message) => message.type === 'status' && message.metadata?.target === 'bot');
+  }
+
+  private isActivityStatus(status: unknown): boolean {
+    return status === 'rag_search'
+      || status === 'rag_found'
+      || status === 'rag_empty'
+      || status === 'tool_start'
+      || status === 'tool_end';
+  }
+
+  private clearStatusClearTimer(): void {
+    if (this.statusClearTimeout) {
+      clearTimeout(this.statusClearTimeout);
+      this.statusClearTimeout = null;
+    }
+  }
+
+  private clearStatusTransitionTimer(): void {
+    if (this.statusTransitionTimeout) {
+      clearTimeout(this.statusTransitionTimeout);
+      this.statusTransitionTimeout = null;
+    }
+  }
+
+  private statusKeyFromEvent(data: WebSocketMessage): StatusKey | null {
+    const metadata = data.metadata || {};
+    const raw = data.payload?.status || metadata.status || metadata.phase || data.content || '';
+    const value = String(raw).toLowerCase();
+
+    if (value.includes('rag_empty') || value.includes('rag.no_sources')) return 'rag_empty';
+    if (value.includes('rag_found') || value.includes('rag.found') || value.includes('relevant context')) return 'rag_found';
+    if (value.includes('rag_search') || value.includes('rag.search') || value.includes('searching knowledge')) return 'rag_search';
+    return null;
+  }
+
+  private statusText(key: StatusKey): string {
+    const locale = this.statusLocale();
+    return STATUS_COPY[locale]?.[key] || STATUS_COPY.en[key];
+  }
+
+  private statusLocale(): StatusLocale {
+    const raw = (this.config.initialLanguage || '').toLowerCase();
+    const base = raw.split(/[-_]/)[0] as StatusLocale;
+    return base in STATUS_COPY ? base : 'en';
+  }
+
+  private handleSuggestionsMessage(data: WebSocketMessage): void {
+    const items = Array.isArray(data.ui?.items) ? data.ui.items : [];
+    const suggestions = items
+      .map((item) => (typeof item.send === 'string' && item.send.trim()) || (typeof item.label === 'string' && item.label.trim()) || '')
+      .filter((item): item is string => item.length > 0)
+      .slice(0, 4);
+    this.store.setSuggestions(suggestions);
   }
 
   private handleConnectionError(message: string): void {

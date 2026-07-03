@@ -27,7 +27,7 @@ export interface WidgetScriptConfig {
   } | null;
   title?: string;
   placeholder?: string;
-  lang?: 'ru' | 'en';
+  lang?: string;
   cdnUrl?: string;
   serverUrl?: string;
   identityUrl?: string;

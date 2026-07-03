@@ -1,5 +1,5 @@
 import { ChatService } from '../services/ChatService';
-import type { ChatConfig, ChatState, WidgetState } from '../types';
+import type { ChatConfig, ChatState, Message, WidgetState } from '../types';
 import { marked } from 'marked';
 
 export interface ChatWidgetConfig extends ChatConfig {
@@ -7,13 +7,15 @@ export interface ChatWidgetConfig extends ChatConfig {
   placeholder?: string;
   container?: HTMLElement;
   onClose?: () => void;
-  lang?: 'ru' | 'en';
+  lang?: string;
   variant?: string;
   customColors?: any;
   mode?: 'floating' | 'inline';
   position?: string;
   welcomeMessage?: string;
   suggestions?: string[];
+  /** When true, widget starts collapsed even if it has messages/welcome message */
+  startMinimized?: boolean;
 }
 
 export interface ChatWidgetTheme {
@@ -21,6 +23,12 @@ export interface ChatWidgetTheme {
   getClassName(): string;
   getCSSPath?(): string | undefined;
 }
+
+type MessagesScrollSnapshot = {
+  top: number;
+  bottomOffset: number;
+  isNearBottom: boolean;
+};
 
 /**
  * Headless Chat Widget - Vanilla JavaScript implementation
@@ -35,6 +43,14 @@ export class ChatWidget {
   protected unsubscribe?: () => void;
   protected root?: HTMLElement;
   protected theme: ChatWidgetTheme;
+  private displayedMessageContent = new Map<string, string>();
+  private targetMessageContent = new Map<string, string>();
+  private revealTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private scrollFrame: number | null = null;
+  private wasPresentationStreaming = false;
+  private lastRenderedMessageSignature = '';
+  private readonly messageRevealDelayMs = 18;
+  private readonly bottomFollowThresholdPx = 48;
 
   constructor(config: ChatWidgetConfig, theme: ChatWidgetTheme) {
     this.config = {
@@ -61,8 +77,10 @@ export class ChatWidget {
       }
     });
 
-    const hasMessages = this.service.store.getState().messages.length > 0;
-    this.widgetState = this.config.mode === 'inline' ? 'full' : (hasMessages ? 'full' : 'minimized');
+    this.widgetState = this.config.startMinimized ? 'minimized' : (
+      this.config.mode === 'inline' ? 'full' : (this.service.store.getState().messages.length > 0 ? 'full' : 'minimized')
+    );
+    this.seedPresentationState(this.service.store.getState().messages);
 
     // Subscribe to state changes
     this.unsubscribe = this.service.store.subscribe(() => {
@@ -113,10 +131,14 @@ export class ChatWidget {
    * Render the widget
    */
   protected render(): void {
+    const scrollSnapshot = this.getMessagesScrollSnapshot();
     const chatState = this.service.store.getState();
+    const presentationState = this.buildPresentationState(chatState);
+    const messageSignature = this.getMessageSignature(presentationState);
+    const messagesChanged = messageSignature !== this.lastRenderedMessageSignature;
     const hasInput = this.inputValue.trim().length > 0;
 
-    const html = this.theme.render(this.widgetState, chatState, hasInput);
+    const html = this.theme.render(this.widgetState, presentationState, hasInput);
 
     if (!this.root) {
       this.root = document.createElement('div');
@@ -136,7 +158,14 @@ export class ChatWidget {
     // For now, we keep the simple innerHTML replacement but the root class handles the transitions
     this.root.innerHTML = html;
     this.attachEventListeners();
-    this.scrollToBottom();
+    const isPresentationStreaming = this.hasPresentationStreaming(presentationState) || chatState.isTyping;
+    this.syncMessagesScroll({
+      previous: scrollSnapshot,
+      shouldFollow: messagesChanged && (isPresentationStreaming || this.wasPresentationStreaming || scrollSnapshot?.isNearBottom !== false),
+      smooth: messagesChanged && !isPresentationStreaming && !this.wasPresentationStreaming,
+    });
+    this.lastRenderedMessageSignature = messageSignature;
+    this.wasPresentationStreaming = isPresentationStreaming;
   }
 
   /**
@@ -301,14 +330,173 @@ export class ChatWidget {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }
 
-  /**
-   * Scroll messages to bottom
-   */
-  protected scrollToBottom(): void {
+  private getMessagesScrollSnapshot(): MessagesScrollSnapshot | null {
+    if (!this.root) return null;
+    const messagesContainer = this.root.querySelector('.chat-messages') as HTMLElement | null;
+    if (!messagesContainer) return null;
+
+    const bottomOffset = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+    return {
+      top: messagesContainer.scrollTop,
+      bottomOffset,
+      isNearBottom: bottomOffset <= this.bottomFollowThresholdPx,
+    };
+  }
+
+  private syncMessagesScroll(options: { previous: MessagesScrollSnapshot | null; shouldFollow: boolean; smooth: boolean }): void {
     if (!this.root) return;
-    const messagesContainer = this.root.querySelector('.chat-messages');
-    if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    const messagesContainer = this.root.querySelector('.chat-messages') as HTMLElement | null;
+    if (!messagesContainer) return;
+
+    if (this.scrollFrame !== null && typeof window !== 'undefined' && window.cancelAnimationFrame) {
+      window.cancelAnimationFrame(this.scrollFrame);
+      this.scrollFrame = null;
+    }
+
+    if (!options.shouldFollow) {
+      this.restoreMessagesScroll(messagesContainer, options.previous);
+      return;
+    }
+
+    const bottom = messagesContainer.scrollHeight;
+    if (!options.smooth) {
+      messagesContainer.scrollTop = bottom;
+      return;
+    }
+
+    this.restoreMessagesScroll(messagesContainer, options.previous);
+    const scroll = () => {
+      if (typeof messagesContainer.scrollTo === 'function') {
+        messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
+      } else {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+      this.scrollFrame = null;
+    };
+
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      this.scrollFrame = window.requestAnimationFrame(scroll);
+    } else {
+      scroll();
+    }
+  }
+
+  private restoreMessagesScroll(messagesContainer: HTMLElement, previous: MessagesScrollSnapshot | null): void {
+    if (!previous) return;
+
+    const maxTop = Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight);
+    messagesContainer.scrollTop = previous.isNearBottom
+      ? maxTop
+      : Math.min(previous.top, maxTop);
+  }
+
+  private getMessageSignature(chatState: ChatState): string {
+    return chatState.messages
+      .map((message) => `${message.id}:${message.type || 'text'}:${message.role}:${message.content.length}:${message.content}`)
+      .join('|');
+  }
+
+  private hasPresentationStreaming(chatState: ChatState): boolean {
+    return chatState.messages.some((message) => Boolean(message.metadata?.presentationStreaming));
+  }
+
+  private seedPresentationState(messages: Message[]): void {
+    for (const message of messages) {
+      if (this.shouldRevealMessage(message)) {
+        const initialContent = message.id === 'welcome' ? '' : message.content;
+        this.displayedMessageContent.set(message.id, initialContent);
+        this.targetMessageContent.set(message.id, message.content);
+      }
+    }
+  }
+
+  private buildPresentationState(chatState: ChatState): ChatState {
+    const visibleIds = new Set(chatState.messages.map((message) => message.id));
+    this.prunePresentationState(visibleIds);
+
+    return {
+      ...chatState,
+      messages: chatState.messages.map((message) => {
+        if (!this.shouldRevealMessage(message)) {
+          return message;
+        }
+
+        const targetContent = message.content;
+        let displayedContent = this.displayedMessageContent.get(message.id);
+
+        if (displayedContent === undefined) {
+          displayedContent = '';
+        }
+
+        if (!targetContent.startsWith(displayedContent)) {
+          displayedContent = '';
+        }
+
+        this.targetMessageContent.set(message.id, targetContent);
+        this.displayedMessageContent.set(message.id, displayedContent);
+
+        const isPresentationStreaming = displayedContent.length < targetContent.length;
+        if (isPresentationStreaming) {
+          this.scheduleMessageReveal(message.id);
+        }
+
+        return {
+          ...message,
+          content: displayedContent,
+          metadata: {
+            ...message.metadata,
+            presentationStreaming: isPresentationStreaming,
+          },
+        };
+      }),
+    };
+  }
+
+  private shouldRevealMessage(message: Message): boolean {
+    return message.role === 'assistant' && (message.type === undefined || message.type === 'text') && message.content.length > 0;
+  }
+
+  private scheduleMessageReveal(messageId: string): void {
+    if (this.revealTimers.has(messageId)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.revealTimers.delete(messageId);
+
+      const targetContent = this.targetMessageContent.get(messageId);
+      const displayedContent = this.displayedMessageContent.get(messageId) ?? '';
+
+      if (!targetContent || displayedContent.length >= targetContent.length) {
+        return;
+      }
+
+      const revealCount = this.getRevealCount(targetContent.length - displayedContent.length);
+      this.displayedMessageContent.set(messageId, targetContent.slice(0, displayedContent.length + revealCount));
+      this.render();
+    }, this.messageRevealDelayMs);
+
+    this.revealTimers.set(messageId, timer);
+  }
+
+  private getRevealCount(remainingCharacters: number): number {
+    if (remainingCharacters > 900) return 12;
+    if (remainingCharacters > 400) return 8;
+    if (remainingCharacters > 180) return 5;
+    return 2;
+  }
+
+  private prunePresentationState(visibleIds: Set<string>): void {
+    for (const messageId of this.displayedMessageContent.keys()) {
+      if (!visibleIds.has(messageId)) {
+        this.displayedMessageContent.delete(messageId);
+        this.targetMessageContent.delete(messageId);
+        const timer = this.revealTimers.get(messageId);
+        if (timer) {
+          clearTimeout(timer);
+          this.revealTimers.delete(messageId);
+        }
+      }
     }
   }
 
@@ -405,6 +593,8 @@ export class ChatWidget {
    * Clears messages and effectively transitions to input-only
    */
   protected handleClose(): void {
+    this.clearPresentationState();
+
     // Clear messages
     this.service.clearMessages();
 
@@ -440,6 +630,11 @@ export class ChatWidget {
   public destroy(): void {
     if (this.unsubscribe) {
       this.unsubscribe();
+    }
+    this.clearPresentationState();
+    if (this.scrollFrame !== null && typeof window !== 'undefined' && window.cancelAnimationFrame) {
+      window.cancelAnimationFrame(this.scrollFrame);
+      this.scrollFrame = null;
     }
     this.service.disconnect();
     if (this.root) {
@@ -484,6 +679,17 @@ export class ChatWidget {
 
     // Trigger re-render
     this.render();
+  }
+
+  private clearPresentationState(): void {
+    for (const timer of this.revealTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.revealTimers.clear();
+    this.displayedMessageContent.clear();
+    this.targetMessageContent.clear();
+    this.wasPresentationStreaming = false;
+    this.lastRenderedMessageSignature = '';
   }
 
   /**

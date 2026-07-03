@@ -37,6 +37,7 @@ export declare class ChatStore {
     setRecording(recording: boolean): void;
     setSpeaking(speaking: boolean): void;
     setTtsEnabled(enabled: boolean): void;
+    setSuggestions(suggestions: string[] | undefined): void;
     reset(): void;
 }
 export {};

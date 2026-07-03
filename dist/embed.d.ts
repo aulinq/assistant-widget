@@ -45,6 +45,8 @@ declare global {
                 mode?: 'floating' | 'inline';
                 containerId?: string;
                 position?: string;
+                welcomeMessage?: string;
+                suggestions?: string[];
             };
         };
     }

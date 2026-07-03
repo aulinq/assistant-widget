@@ -34,7 +34,10 @@ export enum WSMessageType {
   DONE = 'done',
   TOOL_CALL = 'tool_call',
   TOOL_RES = 'tool_res',
+  TOOL_START = 'tool.start',
+  TOOL_END = 'tool.end',
   TYPING = 'typing',
+  UI_SUGGESTIONS = 'ui.suggestions',
 }
 
 export type WebSocketMessageType =
@@ -57,7 +60,10 @@ export type WebSocketMessageType =
   | 'done'
   | 'tool_call'
   | 'tool_res'
-  | 'typing';
+  | 'tool.start'
+  | 'tool.end'
+  | 'typing'
+  | 'ui.suggestions';
 
 export interface Message {
   id: string;
@@ -84,6 +90,7 @@ export interface ChatConfig {
   autoConnect?: boolean;
   debug?: boolean;
   initialLanguage?: string;
+  storageKey?: string;
   welcomeMessage?: string;
   suggestions?: string[];
 }
@@ -97,6 +104,14 @@ export interface WebSocketMessage {
   tenant_agent_id?: string;
   run_id?: string;
   metadata?: Record<string, unknown>;
+  ui?: {
+    items?: Array<{
+      label?: string;
+      send?: string;
+      [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+  };
   payload?: {
     text?: string;
     content?: string;
@@ -135,6 +150,7 @@ export interface ChatState {
   isSpeaking: boolean;
   ttsEnabled: boolean;
   error: string | null;
+  suggestions?: string[];
 }
 
 export type ChatEventType =

@@ -86,4 +86,51 @@ describe("renderUnified", () => {
     expect(html).toContain("<textarea");
     expect(html).toContain("disabled");
   });
+
+  it("shows suggestions after the initial welcome message", () => {
+    const html = renderUnified(
+      "full",
+      {
+        ...baseState,
+        messages: [
+          { role: "assistant", content: "Welcome to the clinic", type: "text", timestamp: Date.now() },
+        ],
+      },
+      {
+        title: "Aulinq",
+        placeholder: "Type",
+        showClose: true,
+        lang: "en",
+        suggestions: ["Book a visit", "Prices"],
+      },
+      false,
+    );
+
+    expect(html).toContain("Welcome to the clinic");
+    expect(html).toContain("chat-suggestions");
+    expect(html).toContain("Book a visit");
+    expect(html).toContain("Prices");
+  });
+
+  it("prefers per-turn suggestions over static suggestions", () => {
+    const html = renderUnified(
+      "full",
+      {
+        ...baseState,
+        suggestions: ["Dynamic price question"],
+        messages: [{ id: "m1", role: "assistant", content: "Sure.", timestamp: Date.now(), type: "text" }],
+      },
+      {
+        title: "Chat",
+        placeholder: "Type...",
+        showClose: true,
+        lang: "en",
+        suggestions: ["Static booking question"],
+      },
+      false,
+    );
+
+    expect(html).toContain("Dynamic price question");
+    expect(html).not.toContain("Static booking question");
+  });
 });

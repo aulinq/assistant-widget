@@ -45,10 +45,12 @@ declare global {
         transport?: 'sse' | 'ws';
         title?: string;
         placeholder?: string;
-        lang?: 'ru' | 'en';
+        lang?: string;
         mode?: 'floating' | 'inline';
         containerId?: string;
         position?: string;
+        welcomeMessage?: string;
+        suggestions?: string[];
       };
     };
   }
@@ -86,6 +88,7 @@ window.ChatWidget = {
       lang: widgetConfig.lang,
       mode: widgetConfig.mode,
       position: widgetConfig.position,
+      suggestions: widgetConfig.suggestions,
     });
 
     // Create widget
@@ -131,6 +134,8 @@ function autoInitialize() {
         if (container) initConfig.container = container;
       }
       if (config.position) initConfig.position = config.position;
+      if (config.welcomeMessage) initConfig.welcomeMessage = config.welcomeMessage;
+      if (Array.isArray(config.suggestions)) initConfig.suggestions = config.suggestions;
 
       window.ChatWidget.init(initConfig);
       return;
@@ -150,6 +155,19 @@ function autoInitialize() {
     const placeholder = script.getAttribute('data-placeholder');
     const mode = script.getAttribute('data-mode') as 'floating' | 'inline' | null;
     const containerId = script.getAttribute('data-container-id');
+    const welcomeMessage = script.getAttribute('data-welcome-message');
+    const suggestionsAttr = script.getAttribute('data-suggestions');
+    let suggestions: string[] | undefined;
+    if (suggestionsAttr) {
+      try {
+        const parsed = JSON.parse(suggestionsAttr);
+        if (Array.isArray(parsed)) {
+          suggestions = parsed.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+        }
+      } catch (e) {
+        console.warn('Invalid JSON in data-suggestions');
+      }
+    }
 
     // Parse custom colors if present (JSON string in data-custom-colors)
     let customColors;
@@ -179,6 +197,8 @@ function autoInitialize() {
         customColors,
         lang: (script.getAttribute('data-lang') as 'ru' | 'en') || undefined,
         position: position || undefined,
+        welcomeMessage: welcomeMessage || undefined,
+        suggestions,
       });
     }
   }

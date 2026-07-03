@@ -20,7 +20,7 @@ const translations = {
 export function renderUnified(
   widgetState: WidgetState,
   state: ChatState,
-  config: { title: string; placeholder: string; showClose: boolean; lang: 'ru' | 'en'; mode?: string; position?: string; suggestions?: string[] },
+  config: { title: string; placeholder: string; showClose: boolean; lang: string; mode?: string; position?: string; suggestions?: string[] },
   hasInput: boolean
 ): string {
   const { messages, isConnecting, isTyping, error } = state;
@@ -36,8 +36,15 @@ export function renderUnified(
                     iconUpArrow();
 
   let suggestionsHtml = '';
-  const suggestions = config.suggestions;
-  const showSuggestions = suggestions && suggestions.length > 0 && messages.length <= 1;
+  const suggestions = state.suggestions ?? config.suggestions ?? [];
+  const lastMessage = [...messages].reverse().find((message) => message.type !== 'status');
+  const showSuggestions = Boolean(
+    suggestions.length > 0 &&
+    !isConnecting &&
+    !isTyping &&
+    lastMessage?.role === 'assistant' &&
+    !lastMessage.metadata?.presentationStreaming
+  );
   if (showSuggestions) {
     suggestionsHtml = `<div class="chat-suggestions">${suggestions.map(s => 
       `<button class="chat-suggestion-chip" data-action="suggestion" data-suggestion="${escapeHtml(s)}">${escapeHtml(s)}</button>`
@@ -74,11 +81,12 @@ function renderMessageGroup(group: {main: Message, status?: Message}, isStreamin
 
   const isUser = msg.role === 'user';
   const isError = msg.type === 'error';
+  const isPresentationStreaming = Boolean(msg.metadata?.presentationStreaming);
 
   let bubbleHtml = '';
   if (!isStatusOnly) {
     let content = isUser ? escapeHtml(msg.content) : renderMarkdown(msg.content);
-    if (isStreaming && !isUser) {
+    if ((isStreaming || isPresentationStreaming) && !isUser) {
       content += '<span class="typing-cursor"></span>';
     }
     const bubbleClass = isUser ? 'chat-message-bubble-user' : (isError ? 'chat-message-bubble-error' : 'chat-message-bubble-assistant');
@@ -91,7 +99,7 @@ function renderMessageGroup(group: {main: Message, status?: Message}, isStreamin
     statusHtml = `<div class="chat-message-status ${isStatusOnly ? 'chat-status-standalone' : ''}"><div class="loader-box"><div class="loader"></div></div><div class="chat-status-text">${escapeHtml(statusMsg.content)}</div></div>`;
   }
 
-  const bubbleActions = (!isUser && !isError && !isStatusOnly) ? `<div class="chat-message-actions"><button class="chat-message-action" data-action="copy" data-content="${escapeHtml(msg.content)}">${iconCopy()}</button><button class="chat-message-action${msg.metadata?.rating === 'like' ? ' active' : ''}" data-action="like" data-run-id="${msg.metadata?.run_id ?? ''}">${iconThumbUp()}</button><button class="chat-message-action${msg.metadata?.rating === 'dislike' ? ' active' : ''}" data-action="dislike" data-run-id="${msg.metadata?.run_id ?? ''}">${iconThumbDown()}</button></div>` : '';
+  const bubbleActions = (!isUser && !isError && !isStatusOnly && !isPresentationStreaming) ? `<div class="chat-message-actions"><button class="chat-message-action" data-action="copy" data-content="${escapeHtml(msg.content)}">${iconCopy()}</button><button class="chat-message-action${msg.metadata?.rating === 'like' ? ' active' : ''}" data-action="like" data-run-id="${msg.metadata?.run_id ?? ''}">${iconThumbUp()}</button><button class="chat-message-action${msg.metadata?.rating === 'dislike' ? ' active' : ''}" data-action="dislike" data-run-id="${msg.metadata?.run_id ?? ''}">${iconThumbDown()}</button></div>` : '';
 
   return `<div class="chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'}">${bubbleHtml}${statusHtml}${bubbleActions}</div>`;
 }

@@ -9,6 +9,8 @@ export interface ThemeColorPalette {
   glass?: string;
   textLight?: string;
   textMuted?: string;
+  linkColor?: string;
+  linkHover?: string;
 }
 
 export type ThemeVariant = 'brown' | 'dark' | 'light' | 'yellow' | 'red' | 'green' | 'blue' | 'purple' | 'custom';
@@ -19,7 +21,7 @@ export interface DefaultThemeConfig {
   showClose?: boolean;
   variant?: ThemeVariant;
   customColors?: ThemeColorPalette;
-  lang?: 'ru' | 'en';
+  lang?: string;
   mode?: string;
   position?: string;
   suggestions?: string[];
@@ -104,7 +106,7 @@ export class DefaultTheme implements ChatWidgetTheme {
       showClose: config.showClose !== false,
       variant: config.variant || (this.config?.variant || 'brown'),
       customColors: config.customColors || (this.config?.customColors || {}),
-      lang: lang as 'ru' | 'en',
+      lang,
       mode,
       position: mode === 'inline' ? 'bottom' : (config.position || this.config?.position || 'bottom'),
       suggestions: config.suggestions || (this.config?.suggestions || []),
@@ -112,7 +114,7 @@ export class DefaultTheme implements ChatWidgetTheme {
     this.customColors = this.config.customColors;
   }
 
-  setLanguage(lang: 'ru' | 'en'): void {
+  setLanguage(lang: string): void {
     this.updateConfig({ lang });
   }
 
@@ -155,6 +157,8 @@ export class DefaultTheme implements ChatWidgetTheme {
     if (colors.glass) vars['--theme-glass'] = colors.glass;
     if (colors.textLight) vars['--theme-text-light'] = colors.textLight;
     if (colors.textMuted) vars['--theme-text-muted'] = colors.textMuted;
+    if (colors.linkColor) vars['--theme-link-color'] = colors.linkColor;
+    if (colors.linkHover) vars['--theme-link-hover'] = colors.linkHover;
 
     // Dynamically calculate and apply high-contrast fallbacks for text, icons, and borders if background is light.
     // Use background if supplied, otherwise fall back to primary color.
@@ -177,6 +181,12 @@ export class DefaultTheme implements ChatWidgetTheme {
       }
       if (!colors.border) {
         vars['--theme-border'] = light ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)';
+      }
+      if (!colors.linkColor) {
+        vars['--theme-link-color'] = light ? '#075985' : '#bfdbfe';
+      }
+      if (!colors.linkHover) {
+        vars['--theme-link-hover'] = light ? '#0c4a6e' : '#ffffff';
       }
     }
 

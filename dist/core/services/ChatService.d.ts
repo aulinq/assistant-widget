@@ -10,9 +10,15 @@ export declare class ChatService {
     private session;
     private connectionPromise;
     private activeStreamAbort;
+    private slowThinkingTimeout;
+    private statusClearTimeout;
+    private statusTransitionTimeout;
+    private storageKey;
+    private readonly minActivityStatusVisibleMs;
     store: ChatStore;
     lastRunId: string;
     constructor(config: ChatConfig, eventHandler?: ChatEventHandler);
+    private storagePath;
     /**
      * Authenticate with identity-service and mark the text runtime ready.
      */
@@ -48,6 +54,18 @@ export declare class ChatService {
     private handleServiceMessage;
     private handleThoughtMessage;
     private handleToolMessage;
+    private armSlowThinkingTimer;
+    private clearSlowThinkingTimer;
+    private activityStatusTransitionDelay;
+    private deferActivityStatusClear;
+    private latestBotStatusMessage;
+    private isActivityStatus;
+    private clearStatusClearTimer;
+    private clearStatusTransitionTimer;
+    private statusKeyFromEvent;
+    private statusText;
+    private statusLocale;
+    private handleSuggestionsMessage;
     private handleConnectionError;
     private resolveIdentityBaseUrl;
     private resolveRuntimeUrl;

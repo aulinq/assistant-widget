@@ -20,6 +20,7 @@ export class ChatStore {
       isSpeaking: false,
       ttsEnabled: false,
       error: null,
+      suggestions: undefined,
       ...initialState,
     };
   }
@@ -128,6 +129,10 @@ export class ChatStore {
     this.setState({ ttsEnabled: enabled });
   }
 
+  setSuggestions(suggestions: string[] | undefined): void {
+    this.setState({ suggestions });
+  }
+
   reset(): void {
     this.setState({
       messages: [],
@@ -138,6 +143,7 @@ export class ChatStore {
       isSpeaking: false,
       ttsEnabled: false,
       error: null,
+      suggestions: undefined,
     });
   }
 }
