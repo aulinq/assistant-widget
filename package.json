@@ -1,6 +1,6 @@
 {
   "name": "@aulinq/assistant-widget",
-  "version": "1.0.23",
+  "version": "1.0.25",
   "description": "Headless chat widget library with vanilla JS core and React components",
   "keywords": [
     "chat",
