@@ -19,7 +19,7 @@ export interface DefaultThemeConfig {
     showClose?: boolean;
     variant?: ThemeVariant;
     customColors?: ThemeColorPalette;
-    lang?: 'ru' | 'en';
+    lang?: string;
     mode?: string;
     position?: string;
     suggestions?: string[];
@@ -32,7 +32,7 @@ export declare class DefaultTheme implements ChatWidgetTheme {
     private customColors?;
     constructor(config?: DefaultThemeConfig);
     updateConfig(config: DefaultThemeConfig): void;
-    setLanguage(lang: 'ru' | 'en'): void;
+    setLanguage(lang: string): void;
     render(state: WidgetState, chatState: ChatState, hasInput: boolean): string;
     getClassName(): string;
     getCSSPath(): string | undefined;

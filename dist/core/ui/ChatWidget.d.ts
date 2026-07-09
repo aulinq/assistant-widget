@@ -5,7 +5,7 @@ export interface ChatWidgetConfig extends ChatConfig {
     placeholder?: string;
     container?: HTMLElement;
     onClose?: () => void;
-    lang?: 'ru' | 'en';
+    lang?: string;
     variant?: string;
     customColors?: any;
     mode?: 'floating' | 'inline';

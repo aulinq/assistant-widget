@@ -3,7 +3,7 @@ export declare function renderUnified(widgetState: WidgetState, state: ChatState
     title: string;
     placeholder: string;
     showClose: boolean;
-    lang: 'ru' | 'en';
+    lang: string;
     mode?: string;
     position?: string;
     suggestions?: string[];

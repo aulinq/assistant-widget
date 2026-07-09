@@ -1,6 +1,6 @@
 {
   "name": "@aulinq/assistant-widget",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Headless chat widget library with vanilla JS core and React components",
   "keywords": [
     "chat",
@@ -23,20 +23,29 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.js"
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
     },
     "./generator": {
       "types": "./dist/generator.d.ts",
-      "import": "./dist/generator.js"
+      "import": "./dist/generator.js",
+      "default": "./dist/generator.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": {
+      "style": "./dist/styles.css",
+      "import": "./dist/styles.css",
+      "require": "./dist/styles.css",
+      "default": "./dist/styles.css"
+    }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "style": "./dist/styles.css",
   "files": [
     "dist"
   ],

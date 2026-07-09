@@ -41,7 +41,7 @@ declare global {
                 transport?: 'sse' | 'ws';
                 title?: string;
                 placeholder?: string;
-                lang?: 'ru' | 'en';
+                lang?: string;
                 mode?: 'floating' | 'inline';
                 containerId?: string;
                 position?: string;
