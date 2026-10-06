@@ -1,5 +1,6 @@
 import { ChatService } from '../services/ChatService';
 import type { ChatConfig, ChatState, WidgetState } from '../types';
+import type { ComposerState } from '../utils/dictation';
 export interface ChatWidgetConfig extends ChatConfig {
     title?: string;
     placeholder?: string;
@@ -16,7 +17,7 @@ export interface ChatWidgetConfig extends ChatConfig {
     startMinimized?: boolean;
 }
 export interface ChatWidgetTheme {
-    render(state: WidgetState, chatState: ChatState, hasInput: boolean): string;
+    render(state: WidgetState, chatState: ChatState, hasInput: boolean, composer?: ComposerState): string;
     getClassName(): string;
     getCSSPath?(): string | undefined;
 }
@@ -33,6 +34,9 @@ export declare class ChatWidget {
     protected unsubscribe?: () => void;
     protected root?: HTMLElement;
     protected theme: ChatWidgetTheme;
+    private recognition;
+    private recording;
+    private dictationError;
     private displayedMessageContent;
     private targetMessageContent;
     private revealTimers;
@@ -86,6 +90,9 @@ export declare class ChatWidget {
      * Handle send message
      */
     protected handleSendMessage(): Promise<void>;
+    private toggleDictation;
+    private abortDictation;
+    private handleRetryConnection;
     protected handleCopyMessage(content: string, btn?: HTMLElement): void;
     protected handleRateMessage(runId: string, rating: string): Promise<void>;
     /**

@@ -1,6 +1,7 @@
 import { ChatStore } from '../store';
 import type { ChatConfig, ChatEventHandler } from '../types';
 export declare class ChatService {
+    private siteUnsubscribe;
     private ws;
     private config;
     private sessionId;
@@ -22,6 +23,7 @@ export declare class ChatService {
     /**
      * Authenticate with identity-service and mark the text runtime ready.
      */
+    private syncSite;
     connect(): Promise<void>;
     disconnect(): void;
     sendMessage(content: string): Promise<void>;

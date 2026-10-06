@@ -1,0 +1,5 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Превью виджета Aulinq</title><style>body{margin:0;background:#f5f3f0;font-family:sans-serif} .preview-note{padding:24px;color:#666;font-size:14px}</style><p class="preview-note">Локальное превью — новая иконка очистки в правом верхнем углу виджета.</p><script type="module">
+import {ChatWidget,DefaultTheme} from '/src/index.ts';
+const widget=new ChatWidget({siteToken:'local-preview',autoConnect:false,position:'bottom',lang:'ru',welcomeMessage:'Здравствуйте! Чем могу помочь?',storageKey:'local-widget-preview-icon'},new DefaultTheme({lang:'ru',title:'Помощник Aulinq',variant:'custom',customColors:{primary:'#ff6b35'},position:'bottom',suggestions:['Что умеет Aulinq?','Как работают умные формы?','Сколько стоит подключение?','Как выбрать тариф?']}));
+widget.setWidgetState('full');
+</script></html>

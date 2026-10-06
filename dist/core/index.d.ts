@@ -1,6 +1,7 @@
 export { ChatService } from './services/ChatService';
 export { ChatStore } from './store';
 export * from './types';
+export * from './errors';
 export * from './utils';
 export { VoiceService } from './services/VoiceService';
 export * from './utils/audio';

@@ -1,3 +1,4 @@
+import type { SiteRuntime } from '@aulinq/site-runtime';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageType = 'text' | 'audio' | 'control' | 'break' | 'error' | 'status';
 export declare enum WSMessageType {
@@ -37,6 +38,8 @@ export interface Message {
 export type WidgetState = 'minimized' | 'input-only' | 'full';
 export type ChatTransport = 'sse' | 'ws';
 export interface ChatConfig {
+    /** Optional shared visitor transport; preserves the standard text widget UI. */
+    siteRuntime?: SiteRuntime;
     serverUrl?: string;
     identityUrl?: string;
     runtimeUrl?: string;
@@ -114,6 +117,7 @@ export interface ChatState {
     isSpeaking: boolean;
     ttsEnabled: boolean;
     error: string | null;
+    isInteractionBlocked: boolean;
     suggestions?: string[];
 }
 export type ChatEventType = 'connected' | 'disconnected' | 'connecting' | 'message' | 'error' | 'typing-start' | 'typing-end' | 'recording-start' | 'recording-stop' | 'state-change';

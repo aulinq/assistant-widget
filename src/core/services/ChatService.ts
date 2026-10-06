@@ -107,6 +107,7 @@ const STATUS_COPY: Record<StatusLocale, Record<StatusKey, string>> = {
 };
 
 export class ChatService {
+  private siteUnsubscribe: (() => void) | null = null;
   private ws: WebSocket | null = null;
   private config: ChatConfig;
   private sessionId: string;
@@ -135,7 +136,13 @@ export class ChatService {
     };
     this.storageKey = this.config.storageKey || config.siteToken;
 
-    console.log('[ChatService] Initializing with siteToken:', config.siteToken, 'config:', config);
+    if (config.siteRuntime) {
+      this.sessionId = config.sessionId || generateId();
+      this.eventHandler = eventHandler;
+      this.store = new ChatStore();
+      this.syncSite();
+      return;
+    }
 
     let savedSessionId: string | null = null;
     let savedMessages: Message[] = [];
@@ -235,7 +242,23 @@ export class ChatService {
   /**
    * Authenticate with identity-service and mark the text runtime ready.
    */
+  private syncSite(): void {
+    const runtime = this.config.siteRuntime;
+    if (!runtime) return;
+    const view = runtime.view;
+    const messages: Message[] = this.config.welcomeMessage ? [{id: "welcome", role: "assistant", content: this.config.welcomeMessage, timestamp: Date.now(), type: "text"}] : [];
+    for (const turn of view.state?.turns || []) messages.push({id: turn.id, role: turn.role, content: turn.text, timestamp: Date.parse(turn.createdAt), type: "text"});
+    if (view.pendingMessage) messages.push({id: view.pendingMessage.id, role: "user", content: view.pendingMessage.text, timestamp: Date.now(), type: "text"});
+    this.store.syncSite(messages, !!view.state, view.busy, view.error || null);
+  }
+
   async connect(): Promise<void> {
+    if (this.config.siteRuntime) {
+      this.siteUnsubscribe ||= this.config.siteRuntime.subscribe(() => this.syncSite());
+      if (!this.config.siteRuntime.view.state) await this.config.siteRuntime.start();
+      this.syncSite();
+      return;
+    }
     if (this.store.getState().isConnected && this.session?.token) {
       this.log('Already connected');
       return;
@@ -272,6 +295,8 @@ export class ChatService {
   }
 
   disconnect(): void {
+    this.siteUnsubscribe?.();
+    this.siteUnsubscribe = null;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -297,6 +322,16 @@ export class ChatService {
   async sendMessage(content: string): Promise<void> {
     const text = content.trim();
     if (!text) return;
+    if (this.config.siteRuntime) {
+      await this.connect();
+      await this.config.siteRuntime.send(text);
+      this.syncSite();
+      return;
+    }
+
+    if (this.store.getState().isInteractionBlocked) {
+      throw new Error('Chat connection is blocked');
+    }
 
     if (!this.store.getState().isConnected || !this.session?.token) {
       await this.connect();
@@ -334,28 +369,25 @@ export class ChatService {
   }
 
   clearMessages(): void {
-    this.clearStatusTransitionTimer();
-    this.clearStatusClearTimer();
-    this.store.clearMessages();
-    if (this.config.welcomeMessage) {
-      this.store.addMessage({
-        id: 'welcome',
-        role: 'assistant',
-        content: this.config.welcomeMessage,
-        timestamp: Date.now(),
-        type: 'text',
-      });
-    }
+    if (this.config.siteRuntime) {void this.config.siteRuntime.reset().then(() => this.syncSite());return;}
+    this.disconnect();
+    this.currentMessageId = null;
+    this.lastRunId = '';
+    this.sessionId = generateId();
+    this.session = null;
+    this.store.restartConversation(this.config.welcomeMessage ? {
+      id: 'welcome',
+      role: 'assistant',
+      content: this.config.welcomeMessage,
+      timestamp: Date.now(),
+      type: 'text',
+    } : undefined);
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        localStorage.removeItem(this.storagePath('chat_history'));
         localStorage.removeItem(this.storagePath('chat_session_data'));
-        localStorage.removeItem(this.storagePath('chat_last_activity'));
-        this.sessionId = generateId();
-        this.session = null;
         localStorage.setItem(this.storagePath('chat_session'), this.sessionId);
       } catch (e) {
-        console.error('Failed to clear chat session/history from localStorage:', e);
+        console.error('Failed to clear chat session data from localStorage:', e);
       }
     }
   }
@@ -562,9 +594,9 @@ export class ChatService {
         throw new Error('Runtime stream failed: empty response body');
       }
 
-      await this.readSSEStream(response.body);
+      await this.readSSEStream(response.body, controller.signal);
     } catch (error) {
-      if ((error as DOMException).name === 'AbortError') return;
+      if (controller.signal.aborted || (error as DOMException).name === 'AbortError') return;
       const message = error instanceof Error ? error.message : 'Runtime stream failed';
       this.handleErrorMessage({
         type: WSMessageType.ERROR,
@@ -575,18 +607,22 @@ export class ChatService {
     } finally {
       if (this.activeStreamAbort === controller) {
         this.activeStreamAbort = null;
+        this.handleResponseEnd();
       }
-      this.handleResponseEnd();
     }
   }
 
-  private async readSSEStream(body: ReadableStream<Uint8Array>): Promise<void> {
+  private async readSSEStream(body: ReadableStream<Uint8Array>, signal?: AbortSignal): Promise<void> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
     while (true) {
       const { value, done } = await reader.read();
+      if (signal?.aborted) {
+        await reader.cancel();
+        return;
+      }
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -634,74 +670,84 @@ export class ChatService {
     this.store.setTyping(true);
     this.emit({ type: 'typing-start' });
 
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const ws = new WebSocket(url);
-      this.ws = ws;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const ws = new WebSocket(url);
+        this.ws = ws;
 
-      const settle = (error?: Error) => {
-        if (settled) return;
-        settled = true;
-        this.ws = null;
-        this.handleResponseEnd();
-        if (error) reject(error);
-        else resolve();
-      };
+        const settle = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          this.ws = null;
+          this.handleResponseEnd();
+          if (error) reject(error);
+          else resolve();
+        };
 
-      ws.onopen = () => {
-        this.log('Runtime WebSocket opened');
-        ws.send(JSON.stringify(request));
-      };
+        ws.onopen = () => {
+          this.log('Runtime WebSocket opened');
+          ws.send(JSON.stringify(request));
+        };
 
-      ws.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data) as WebSocketMessage;
-          const isAuthError = data.type === WSMessageType.ERROR && data.content && (
-            data.content.includes('session expired') || 
-            data.content.includes('invalid token')
-          );
-          if (isAuthError) {
-            this.log('Session expired or invalid (WS). Wiping cached session and re-authenticating.');
-            if (typeof window !== 'undefined' && window.localStorage) {
-              try {
-                localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
-              } catch (e) {
-                console.error(e);
+        ws.onmessage = async (event) => {
+          try {
+            const data = JSON.parse(event.data) as WebSocketMessage;
+            const isAuthError = data.type === WSMessageType.ERROR && data.content && (
+              data.content.includes('session expired') ||
+              data.content.includes('invalid token')
+            );
+            if (isAuthError) {
+              this.log('Session expired or invalid (WS). Wiping cached session and re-authenticating.');
+              if (typeof window !== 'undefined' && window.localStorage) {
+                try {
+                  localStorage.removeItem(`aulinq:chat_session_data:${this.config.siteToken}`);
+                } catch (e) {
+                  console.error(e);
+                }
               }
+              this.session = null;
+              ws.close(1008, 'Session expired');
+              settle();
+              await this.connect();
+              const restoredWs = this.session as HandshakeSession | null;
+              if (restoredWs?.token) {
+                request.token = restoredWs.token;
+                await this.sendViaWebSocket(request);
+              }
+              return;
             }
-            this.session = null;
-            ws.close(1008, 'Session expired');
-            settle();
-            await this.connect();
-            const restoredWs = this.session as HandshakeSession | null;
-            if (restoredWs?.token) {
-              request.token = restoredWs.token;
-              await this.sendViaWebSocket(request);
+            this.handleRuntimeEvent(data);
+            if (data.type === WSMessageType.DONE || data.type === WSMessageType.ERROR) {
+              ws.close(1000, 'Message complete');
+              settle();
             }
-            return;
+          } catch (error) {
+            settle(error instanceof Error ? error : new Error('Invalid runtime WebSocket message'));
           }
-          this.handleRuntimeEvent(data);
-          if (data.type === WSMessageType.DONE || data.type === WSMessageType.ERROR) {
-            ws.close(1000, 'Message complete');
+        };
+
+        ws.onerror = () => {
+          settle(new Error('Runtime WebSocket error'));
+        };
+
+        ws.onclose = (event) => {
+          if (event.code === 1000 || settled) {
             settle();
+          } else {
+            settle(new Error(`Runtime WebSocket closed with code ${event.code}`));
           }
-        } catch (error) {
-          settle(error instanceof Error ? error : new Error('Invalid runtime WebSocket message'));
-        }
-      };
-
-      ws.onerror = () => {
-        settle(new Error('Runtime WebSocket error'));
-      };
-
-      ws.onclose = (event) => {
-        if (event.code === 1000 || settled) {
-          settle();
-        } else {
-          settle(new Error(`Runtime WebSocket closed with code ${event.code}`));
-        }
-      };
-    });
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Runtime WebSocket error';
+      this.handleErrorMessage({
+        type: WSMessageType.ERROR,
+        content: message,
+        timestamp: Date.now(),
+      });
+      throw error;
+    }
   }
 
   private handleRuntimeEvent(data: WebSocketMessage): void {
@@ -868,14 +914,6 @@ export class ChatService {
     this.clearStatusClearTimer();
     this.store.removeStatusMessages();
     this.handleResponseEnd();
-
-    this.store.addMessage({
-      id: generateId(),
-      role: 'assistant',
-      content: errorMsg,
-      timestamp: Date.now(),
-      type: 'error',
-    });
 
     this.store.setError(errorMsg);
     this.emit({ type: 'error', data: errorMsg });
@@ -1112,7 +1150,7 @@ export class ChatService {
   private handleConnectionError(message: string): void {
     this.session = null;
     this.store.setConnected(false);
-    this.store.setError(message);
+    this.store.setError(message, true);
     this.emit({ type: 'error', data: message });
   }
 

@@ -39,3 +39,13 @@ lerna-debug.log*
 # TypeScript
 *.tsbuildinfo
 *.tgz
+# Local credentials and generated state
+.env
+.env.*
+!.env.example
+!.env.shared.example
+node_modules/
+dist/
+.repowise/
+.mcp.json
+*.tsbuildinfo

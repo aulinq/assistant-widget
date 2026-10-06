@@ -25,15 +25,17 @@ export declare class ChatStore {
      * Update state and notify listeners
      */
     private setState;
+    syncSite(messages: Message[], connected: boolean, typing: boolean, error: string | null): void;
     addMessage(message: Message): void;
     updateMessage(id: string, content: string): void;
     updateMessageDetails(id: string, updates: Partial<Message>): void;
     clearMessages(): void;
+    restartConversation(welcome?: Message): void;
     removeStatusMessages(): void;
     setConnected(connected: boolean): void;
     setConnecting(connecting: boolean): void;
     setTyping(typing: boolean): void;
-    setError(error: string | null): void;
+    setError(error: string | null, isInteractionBlocked?: boolean): void;
     setRecording(recording: boolean): void;
     setSpeaking(speaking: boolean): void;
     setTtsEnabled(enabled: boolean): void;

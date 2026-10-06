@@ -253,7 +253,7 @@ describe("ChatService", () => {
     expect(service.store.getState().suggestions).toEqual([]);
   });
 
-  it("surfaces runtime SSE failures as error messages", async () => {
+  it("surfaces runtime SSE failures as a single non-blocking error state", async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -276,9 +276,31 @@ describe("ChatService", () => {
 
     const state = service.store.getState();
     expect(state.error).toContain("runtime unavailable");
-    const errorMessage = state.messages.find((m) => m.type === "error");
-    expect(errorMessage?.content).toContain("runtime unavailable");
+    expect(state.messages.some((m) => m.type === "error")).toBe(false);
+    expect(state.isInteractionBlocked).toBe(false);
     expect(state.isTyping).toBe(false);
+  });
+
+  it("blocks interaction when the initial handshake fails", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: async () => `{"error":"identity unavailable"}`,
+    });
+
+    const service = new ChatService({
+      siteToken: "site-token",
+      identityUrl: "http://localhost:8100",
+      runtimeUrl: "http://localhost:8890/v1/chat/stream",
+    });
+
+    await expect(service.connect()).rejects.toThrow("Authentication failed");
+    expect(service.store.getState()).toMatchObject({
+      isConnected: false,
+      isConnecting: false,
+      isInteractionBlocked: true,
+    });
   });
 
   it("maps runtime URLs for ws and sse transports", () => {
@@ -311,6 +333,25 @@ describe("ChatService", () => {
     const messages = service.store.getState().messages;
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe("Fresh welcome");
+  });
+
+  it('restores only the welcome and starter suggestions after clearing an active conversation', () => {
+    const service = new ChatService({siteToken: 't', welcomeMessage: 'Welcome', suggestions: ['Start here']});
+    const oldSession = service.getSessionId();
+    const controller = new AbortController();
+    (service as unknown as {activeStreamAbort: AbortController}).activeStreamAbort = controller;
+    service.store.addMessage({id: 'old', role: 'user', content: 'Previous question', timestamp: Date.now()});
+    service.store.setSuggestions(['Follow-up']);
+    service.store.setTyping(true);
+    service.store.setError('Old error');
+    service.clearMessages();
+    expect(controller.signal.aborted).toBe(true);
+    expect(service.getSessionId()).not.toBe(oldSession);
+    expect(service.store.getState()).toMatchObject({
+      messages: [expect.objectContaining({id: 'welcome', content: 'Welcome'})],
+      suggestions: undefined, isTyping: false, error: null, isInteractionBlocked: false,
+    });
+    service.disconnect();
   });
 
   it("disconnect aborts active stream and closes websocket", () => {

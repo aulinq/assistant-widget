@@ -3,6 +3,7 @@ import { ChatWidget, type ChatWidgetConfig } from '../../core';
 import { DefaultTheme, ThemeVariant, ThemeColorPalette } from '../../themes/default';
 
 export interface ChatWidgetWrapperProps extends Omit<ChatWidgetConfig, 'container'> {
+  openSignal?: number;
   theme?: 'default';
   variant?: ThemeVariant;
   customColors?: ThemeColorPalette;
@@ -16,6 +17,7 @@ export interface ChatWidgetWrapperProps extends Omit<ChatWidgetConfig, 'containe
  */
 export function ChatWidgetWrapper({
   theme = 'default',
+  openSignal = 0,
   variant,
   customColors,
   className = '',
@@ -64,7 +66,9 @@ export function ChatWidgetWrapper({
       widget.destroy();
       widgetRef.current = null;
     };
-  }, [config.serverUrl, config.identityUrl, config.runtimeUrl, config.transport, config.siteToken, config.storageKey, config.mode]);
+  }, [config.serverUrl, config.identityUrl, config.runtimeUrl, config.transport, config.siteToken, config.storageKey, config.mode, config.siteRuntime]);
+
+  useEffect(() => {if (openSignal) widgetRef.current?.setWidgetState('full');}, [openSignal]);
 
   // Handle dynamic property updates (re-uses existing instance)
   useEffect(() => {

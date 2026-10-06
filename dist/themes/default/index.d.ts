@@ -26,6 +26,7 @@ export interface DefaultThemeConfig {
 }
 import { ChatWidgetTheme } from '../../core/ui/ChatWidget';
 import { ChatState, WidgetState } from '../../core/types';
+import type { ComposerState } from '../../core/utils/dictation';
 export declare const standardPalettes: Record<ThemeVariant, ThemeColorPalette>;
 export declare class DefaultTheme implements ChatWidgetTheme {
     private config;
@@ -33,7 +34,7 @@ export declare class DefaultTheme implements ChatWidgetTheme {
     constructor(config?: DefaultThemeConfig);
     updateConfig(config: DefaultThemeConfig): void;
     setLanguage(lang: string): void;
-    render(state: WidgetState, chatState: ChatState, hasInput: boolean): string;
+    render(state: WidgetState, chatState: ChatState, hasInput: boolean, composer?: ComposerState): string;
     getClassName(): string;
     getCSSPath(): string | undefined;
     private mapColorsToVars;

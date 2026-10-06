@@ -28,13 +28,15 @@ export default defineConfig(({ command }) => {
         entry: {
           index: resolve(__dirname, 'src/index.ts'),
           'react/index': resolve(__dirname, 'src/react/index.tsx'),
+          'react/site': resolve(__dirname, 'src/react/site.tsx'),
           'generator': resolve(__dirname, 'src/generator.ts'),
+          'embed': resolve(__dirname, 'src/embed.ts'),
         },
         formats: ['es'],
         name: 'ChatWidget',
       },
       rollupOptions: {
-        external: ['react', 'react-dom', 'react/jsx-runtime'],
+        external: ['react', 'react-dom', 'react/jsx-runtime','@aulinq/site-runtime/react'],
         output: {
           globals: {
             react: 'React',

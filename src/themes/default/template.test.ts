@@ -5,11 +5,14 @@ import type { ChatState } from "../../core/types";
 
 const baseState: ChatState = {
   messages: [],
+  isConnected: false,
   isConnecting: false,
   isTyping: false,
-  connectionId: null,
-  lastError: null,
+  isRecording: false,
+  isSpeaking: false,
+  ttsEnabled: false,
   error: null,
+  isInteractionBlocked: false,
 };
 
 describe("renderUnified", () => {
@@ -132,5 +135,46 @@ describe("renderUnified", () => {
 
     expect(html).toContain("Dynamic price question");
     expect(html).not.toContain("Static booking question");
+  });
+
+  it("renders runtime errors as one human-readable alert after messages", () => {
+    const html = renderUnified(
+      "full",
+      {
+        ...baseState,
+        error: "Runtime stream failed: quota_exceeded",
+        messages: [
+          { id: "m1", role: "user", content: "Цена?", timestamp: Date.now(), type: "text" },
+          { id: "legacy-error", role: "assistant", content: "quota_exceeded", timestamp: Date.now(), type: "error" },
+        ],
+      },
+      { title: "Консультант", placeholder: "Сообщение", showClose: true, lang: "ru", suggestions: ["Каталог"] },
+      false,
+    );
+
+    expect((html.match(/class="chat-error"/g) ?? []).length).toBe(1);
+    expect(html).toContain("Лимит запросов исчерпан");
+    expect(html).not.toContain("quota_exceeded");
+    expect(html).not.toContain("chat-suggestions");
+  });
+
+  it("blocks input and offers reconnect for startup errors", () => {
+    const html = renderUnified(
+      "full",
+      {
+        ...baseState,
+        error: "Failed to fetch",
+        isInteractionBlocked: true,
+        messages: [{ id: "welcome", role: "assistant", content: "Здравствуйте", timestamp: Date.now(), type: "text" }],
+      },
+      { title: "Консультант", placeholder: "Сообщение", showClose: true, lang: "ru", suggestions: ["Каталог"] },
+      true,
+    );
+
+    expect(html).toContain("Не удалось подключиться к чату");
+    expect(html).toContain('data-action="retry-connection"');
+    expect(html).toContain('placeholder="Чат недоступен"');
+    expect(html).toContain('disabled aria-disabled="true"');
+    expect(html).not.toContain("chat-suggestions");
   });
 });

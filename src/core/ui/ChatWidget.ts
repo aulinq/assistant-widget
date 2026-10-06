@@ -1,6 +1,7 @@
 import { ChatService } from '../services/ChatService';
 import type { ChatConfig, ChatState, Message, WidgetState } from '../types';
 import { marked } from 'marked';
+import type { ComposerState, Recognition, SpeechWindow } from '../utils/dictation';
 
 export interface ChatWidgetConfig extends ChatConfig {
   title?: string;
@@ -19,7 +20,7 @@ export interface ChatWidgetConfig extends ChatConfig {
 }
 
 export interface ChatWidgetTheme {
-  render(state: WidgetState, chatState: ChatState, hasInput: boolean): string;
+  render(state: WidgetState, chatState: ChatState, hasInput: boolean, composer?: ComposerState): string;
   getClassName(): string;
   getCSSPath?(): string | undefined;
 }
@@ -43,6 +44,9 @@ export class ChatWidget {
   protected unsubscribe?: () => void;
   protected root?: HTMLElement;
   protected theme: ChatWidgetTheme;
+  private recognition: Recognition | null = null;
+  private recording = false;
+  private dictationError = false;
   private displayedMessageContent = new Map<string, string>();
   private targetMessageContent = new Map<string, string>();
   private revealTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -83,7 +87,10 @@ export class ChatWidget {
     this.seedPresentationState(this.service.store.getState().messages);
 
     // Subscribe to state changes
-    this.unsubscribe = this.service.store.subscribe(() => {
+    this.unsubscribe = this.service.store.subscribe((state) => {
+      if (state.error && state.isInteractionBlocked && this.widgetState !== 'full') {
+        this.widgetState = 'full';
+      }
       this.render();
     });
 
@@ -133,12 +140,13 @@ export class ChatWidget {
   protected render(): void {
     const scrollSnapshot = this.getMessagesScrollSnapshot();
     const chatState = this.service.store.getState();
+    if ((chatState.isConnecting || chatState.isInteractionBlocked) && this.recognition) this.abortDictation();
     const presentationState = this.buildPresentationState(chatState);
     const messageSignature = this.getMessageSignature(presentationState);
     const messagesChanged = messageSignature !== this.lastRenderedMessageSignature;
     const hasInput = this.inputValue.trim().length > 0;
 
-    const html = this.theme.render(this.widgetState, presentationState, hasInput);
+    const html = this.theme.render(this.widgetState, presentationState, hasInput, { recording: this.recording, dictationError: this.dictationError });
 
     if (!this.root) {
       this.root = document.createElement('div');
@@ -211,6 +219,12 @@ export class ChatWidget {
       });
     }
 
+    this.root.querySelector('[data-action="toggle"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handleHeaderClick();
+    });
+    this.root.querySelector('[data-action="dictation"]')?.addEventListener('click', () => this.toggleDictation());
+
     // Input textarea
     const textarea = this.root.querySelector('.chat-input') as HTMLTextAreaElement;
     if (textarea) {
@@ -258,6 +272,13 @@ export class ChatWidget {
     if (primaryBtn) {
       primaryBtn.addEventListener('click', () => {
         this.handlePrimaryAction();
+      });
+    }
+
+    const retryConnectionBtn = this.root.querySelector('[data-action="retry-connection"]');
+    if (retryConnectionBtn) {
+      retryConnectionBtn.addEventListener('click', () => {
+        void this.handleRetryConnection();
       });
     }
 
@@ -391,9 +412,10 @@ export class ChatWidget {
   }
 
   private getMessageSignature(chatState: ChatState): string {
-    return chatState.messages
+    const messages = chatState.messages
       .map((message) => `${message.id}:${message.type || 'text'}:${message.role}:${message.content.length}:${message.content}`)
       .join('|');
+    return `${messages}|error:${chatState.error || ''}|blocked:${chatState.isInteractionBlocked}`;
   }
 
   private hasPresentationStreaming(chatState: ChatState): boolean {
@@ -518,6 +540,9 @@ export class ChatWidget {
    * Handle primary action (send)
    */
   protected async handlePrimaryAction(): Promise<void> {
+    if (this.recording || this.service.store.getState().isConnecting || this.service.store.getState().isInteractionBlocked) {
+      return;
+    }
     if (this.inputValue.trim()) {
       await this.handleSendMessage();
     }
@@ -527,6 +552,10 @@ export class ChatWidget {
    * Handle send message
    */
   protected async handleSendMessage(): Promise<void> {
+    if (this.recording || this.service.store.getState().isConnecting || this.service.store.getState().isInteractionBlocked) {
+      return;
+    }
+
     const message = this.inputValue;
     if (!message.trim()) {
       return;
@@ -545,6 +574,75 @@ export class ChatWidget {
       await this.service.sendMessage(message);
     } catch (error) {
       console.error('[ChatWidget] Failed to send message:', error);
+    }
+  }
+
+  private toggleDictation(): void {
+    if (this.recording) {
+      this.recognition?.stop();
+      return;
+    }
+    const state = this.service.store.getState();
+    if (state.isConnecting || state.isInteractionBlocked) return;
+    const browser = window as SpeechWindow;
+    const Constructor = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+    this.dictationError = false;
+    if (!Constructor) {
+      this.dictationError = true;
+      this.render();
+      return;
+    }
+    this.abortDictation();
+    try {
+      const instance = new Constructor();
+      this.recognition = instance;
+      instance.lang = this.config.lang || this.config.initialLanguage || document.documentElement.lang || 'en';
+      instance.interimResults = true;
+      instance.continuous = false;
+      const prefix = this.inputValue.trim();
+      instance.onresult = (event) => {
+        if (this.recognition !== instance) return;
+        const text = Array.from(event.results).map((result) => result[0]?.transcript || '').join(' ');
+        this.inputValue = (prefix ? prefix + ' ' : '') + text;
+        this.render();
+      };
+      instance.onend = () => {
+        if (this.recognition !== instance) return;
+        this.recognition = null;
+        this.recording = false;
+        this.render();
+      };
+      instance.onerror = () => {
+        if (this.recognition !== instance) return;
+        this.abortDictation();
+        this.dictationError = true;
+        this.render();
+      };
+      this.recording = true;
+      this.render();
+      instance.start();
+    } catch {
+      this.abortDictation();
+      this.dictationError = true;
+      this.render();
+    }
+  }
+
+  private abortDictation(): void {
+    const instance = this.recognition;
+    this.recognition = null;
+    this.recording = false;
+    if (instance) {
+      instance.onresult = instance.onend = instance.onerror = null;
+      instance.abort();
+    }
+  }
+
+  private async handleRetryConnection(): Promise<void> {
+    try {
+      await this.service.connect();
+    } catch (error) {
+      console.error('[ChatWidget] Reconnect failed:', error);
     }
   }
 
@@ -593,19 +691,23 @@ export class ChatWidget {
    * Clears messages and effectively transitions to input-only
    */
   protected handleClose(): void {
+    this.abortDictation();
+    this.dictationError = false;
     this.clearPresentationState();
 
     // Clear messages
     this.service.clearMessages();
 
-    // Inline embeds keep their stable full-height frame.
-    this.setWidgetState(this.config.mode === 'inline' ? 'full' : 'input-only');
+    // Show the new conversation immediately, including welcome and starter questions.
+    this.inputValue = '';
+    this.setWidgetState(this.service.store.getState().messages.length > 0 || this.config.mode === 'inline' ? 'full' : 'input-only');
   }
 
   /**
    * Set widget state
    */
   public setWidgetState(state: WidgetState): void {
+    if (state === 'minimized') this.abortDictation();
     this.widgetState = state;
     this.render();
   }
@@ -628,6 +730,7 @@ export class ChatWidget {
    * Destroy widget and cleanup
    */
   public destroy(): void {
+    this.abortDictation();
     if (this.unsubscribe) {
       this.unsubscribe();
     }

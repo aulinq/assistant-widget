@@ -30,6 +30,7 @@ export interface DefaultThemeConfig {
 import { ChatWidgetTheme } from '../../core/ui/ChatWidget';
 import { ChatState, WidgetState } from '../../core/types';
 import { renderUnified } from './template';
+import type { ComposerState } from '../../core/utils/dictation';
 
 export const standardPalettes: Record<ThemeVariant, ThemeColorPalette> = {
   brown: {
@@ -118,7 +119,7 @@ export class DefaultTheme implements ChatWidgetTheme {
     this.updateConfig({ lang });
   }
 
-  render(state: WidgetState, chatState: ChatState, hasInput: boolean): string {
+  render(state: WidgetState, chatState: ChatState, hasInput: boolean, composer?: ComposerState): string {
     const variant = this.config.variant;
     const basePalette = standardPalettes[variant] || {};
     // Only merge custom colors if the variant is 'custom', so standard theme contrast calculations are not polluted by custom color props passed in background previews
@@ -134,7 +135,7 @@ export class DefaultTheme implements ChatWidgetTheme {
          }
          </style>`;
 
-    return styleTag + renderUnified(state, chatState, this.config, hasInput);
+    return styleTag + renderUnified(state, chatState, this.config, hasInput, composer);
   }
 
   getClassName(): string {

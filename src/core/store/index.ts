@@ -20,6 +20,7 @@ export class ChatStore {
       isSpeaking: false,
       ttsEnabled: false,
       error: null,
+      isInteractionBlocked: false,
       suggestions: undefined,
       ...initialState,
     };
@@ -59,6 +60,10 @@ export class ChatStore {
 
   // State update methods
 
+  syncSite(messages: Message[], connected: boolean, typing: boolean, error: string | null): void {
+    this.setState({messages, isConnected: connected, isConnecting: !connected && typing, isTyping: connected && typing, error, suggestions: undefined});
+  }
+
   addMessage(message: Message): void {
     this.setState({
       messages: [...this.state.messages, message],
@@ -85,6 +90,16 @@ export class ChatStore {
     this.setState({ messages: [] });
   }
 
+  restartConversation(welcome?: Message): void {
+    this.setState({
+      messages: welcome ? [welcome] : [],
+      isTyping: false,
+      error: null,
+      isInteractionBlocked: false,
+      suggestions: undefined,
+    });
+  }
+
   removeStatusMessages(): void {
     const hasStatus = this.state.messages.some(m => m.type === 'status');
     if (hasStatus) {
@@ -99,21 +114,26 @@ export class ChatStore {
       isConnected: connected,
       isConnecting: false,
       error: connected ? null : this.state.error,
+      isInteractionBlocked: connected ? false : this.state.isInteractionBlocked,
     });
   }
 
   setConnecting(connecting: boolean): void {
-    this.setState({ isConnecting: connecting });
+    this.setState({
+      isConnecting: connecting,
+      ...(connecting ? { error: null, isInteractionBlocked: false } : {}),
+    });
   }
 
   setTyping(typing: boolean): void {
     this.setState({ isTyping: typing });
   }
 
-  setError(error: string | null): void {
+  setError(error: string | null, isInteractionBlocked = false): void {
     this.setState({
       error,
       isConnecting: false,
+      isInteractionBlocked: Boolean(error) && isInteractionBlocked,
     });
   }
 
@@ -143,6 +163,7 @@ export class ChatStore {
       isSpeaking: false,
       ttsEnabled: false,
       error: null,
+      isInteractionBlocked: false,
       suggestions: undefined,
     });
   }

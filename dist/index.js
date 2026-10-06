@@ -1,5 +1,6 @@
-import { W as D } from "./index-hzgQXJLh.js";
-import { C as W, a as _, b as v, D as L, d as Q, c as z, f as V, g as q, e as J, i as j, h as F, s as K, t as $ } from "./index-hzgQXJLh.js";
+/* empty css                */
+import { W as D } from "./index-C1lhhCiE.js";
+import { a as _, b as v, C as L, D as Q, d as z, e as V, f as q, c as j, g as J, h as F, i as K, j as $, s as G, t as Z } from "./index-C1lhhCiE.js";
 async function T(a) {
   if (typeof window > "u" || !navigator.mediaDevices?.getUserMedia)
     throw new Error("Microphone access not supported");
@@ -164,7 +165,7 @@ class M {
     this.stopTTS();
   }
 }
-class U {
+class H {
   webSocket = null;
   recordingResources = {};
   audioPlayback;
@@ -245,22 +246,23 @@ class U {
 }
 export {
   M as AudioPlaybackManager,
-  W as ChatService,
-  _ as ChatStore,
-  v as ChatWidget,
-  L as DefaultTheme,
-  U as VoiceService,
+  _ as ChatService,
+  v as ChatStore,
+  L as ChatWidget,
+  Q as DefaultTheme,
+  H as VoiceService,
   D as WSMessageType,
-  Q as debounce,
-  z as deepClone,
-  V as formatTime,
-  q as generateId,
-  J as isEmpty,
-  j as isValidJson,
-  F as safeJsonParse,
-  K as sanitizeHtml,
+  z as debounce,
+  V as deepClone,
+  q as formatTime,
+  j as generateId,
+  J as getChatErrorPresentation,
+  F as isEmpty,
+  K as isValidJson,
+  $ as safeJsonParse,
+  G as sanitizeHtml,
   T as startAudioRecording,
   N as stopAudioRecording,
-  $ as truncate
+  Z as truncate
 };
 //# sourceMappingURL=index.js.map

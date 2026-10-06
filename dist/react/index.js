@@ -1,57 +1,61 @@
-import { D as h, b as l } from "../index-hzgQXJLh.js";
-import { jsx as v } from "react/jsx-runtime";
-import { useRef as a, useEffect as p } from "react";
-function x({
+/* empty css                 */
+import { jsx as R } from "react/jsx-runtime";
+import { useRef as w, useEffect as m } from "react";
+import { D as h, C as v } from "../index-C1lhhCiE.js";
+function D({
   theme: y = "default",
-  variant: i,
-  customColors: o,
-  className: w = "",
-  title: t,
-  placeholder: s,
-  lang: r,
+  openSignal: d = 0,
+  variant: n,
+  customColors: u,
+  className: W = "",
+  title: s,
+  placeholder: r,
+  lang: i,
   ...e
 }) {
-  const u = a(null), n = a(null);
-  return p(() => {
-    if (!u.current) return;
-    const m = e.mode === "inline" ? void 0 : e.position, W = new h({
-      title: t,
-      placeholder: s,
-      variant: i,
-      customColors: o,
-      lang: r,
+  const o = w(null), t = w(null);
+  return m(() => {
+    if (!o.current) return;
+    const a = e.mode === "inline" ? void 0 : e.position, l = new h({
+      title: s,
+      placeholder: r,
+      variant: n,
+      customColors: u,
+      lang: i,
       mode: e.mode,
-      position: m,
+      position: a,
       suggestions: e.suggestions
-    }), d = new l(
+    }), p = new v(
       {
         ...e,
-        title: t,
-        placeholder: s,
-        lang: r,
-        position: m,
-        container: u.current
+        title: s,
+        placeholder: r,
+        lang: i,
+        position: a,
+        container: o.current
       },
-      W
+      l
     );
-    return n.current = d, () => {
-      d.destroy(), n.current = null;
+    return t.current = p, () => {
+      p.destroy(), t.current = null;
     };
-  }, [e.serverUrl, e.identityUrl, e.runtimeUrl, e.transport, e.siteToken, e.storageKey, e.mode]), p(() => {
-    n.current && n.current.updateConfig({
-      title: t,
-      placeholder: s,
-      lang: r,
-      variant: i,
-      customColors: o,
+  }, [e.serverUrl, e.identityUrl, e.runtimeUrl, e.transport, e.siteToken, e.storageKey, e.mode, e.siteRuntime]), m(() => {
+    d && t.current?.setWidgetState("full");
+  }, [d]), m(() => {
+    t.current && t.current.updateConfig({
+      title: s,
+      placeholder: r,
+      lang: i,
+      variant: n,
+      customColors: u,
       position: e.mode === "inline" ? void 0 : e.position,
       welcomeMessage: e.welcomeMessage,
       suggestions: e.suggestions
     });
-  }, [t, s, r, i, o, e.position, e.mode, e.welcomeMessage, e.suggestions]), /* @__PURE__ */ v("div", { ref: u, className: `assistant-widget-container ${w}`.trim() });
+  }, [s, r, i, n, u, e.position, e.mode, e.welcomeMessage, e.suggestions]), /* @__PURE__ */ R("div", { ref: o, className: `assistant-widget-container ${W}`.trim() });
 }
 export {
-  x as ChatWidget,
-  x as ChatWidgetWrapper
+  D as ChatWidget,
+  D as ChatWidgetWrapper
 };
 //# sourceMappingURL=index.js.map

@@ -241,3 +241,23 @@ Contributions are welcome! Please read our contributing guidelines first.
 ## Credits
 
 Built by Aulinq team with ❤️
+
+
+## Shared dynamic-site session (opt-in)
+
+Install `@aulinq/site-runtime` alongside the widget. Create one runtime for the page and pass that **same instance** to the form and assistant adapters. Legacy exports keep their existing transport and API.
+
+```tsx
+import {useSiteRuntime, SiteRenderer} from '@aulinq/site-runtime/react';
+import {SiteFormWidget} from '@aulinq/form-widget/site';
+import {SiteAssistantWidget} from '@aulinq/assistant-widget/site';
+
+const {runtime, view} = useSiteRuntime({
+  publicId: 'your-published-site', page: '/', apiBaseUrl: 'https://aulinq.ru'
+});
+// Use a developer-supplied registry for SiteRenderer.
+// Both conversation surfaces use this runtime, not independent sessions.
+return <><SiteFormWidget runtime={runtime}/><SiteAssistantWidget runtime={runtime}/></>;
+```
+
+The server owns capabilities, publication version and demo mode. Dictation fills an editable draft and never submits it automatically. Business execution is not enabled by these adapters.

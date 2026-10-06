@@ -1,3 +1,4 @@
+import type {SiteRuntime} from '@aulinq/site-runtime';
 export type MessageRole = 'user' | 'assistant' | 'system';
 
 export type MessageType = 'text' | 'audio' | 'control' | 'break' | 'error' | 'status';
@@ -78,6 +79,8 @@ export type WidgetState = 'minimized' | 'input-only' | 'full';
 export type ChatTransport = 'sse' | 'ws';
 
 export interface ChatConfig {
+  /** Optional shared visitor transport; preserves the standard text widget UI. */
+  siteRuntime?: SiteRuntime;
   serverUrl?: string;         // Deprecated: used to point to chat-service/runtime
   identityUrl?: string;       // New: identity-service for handshake
   runtimeUrl?: string;        // New: agent-runtime for streaming
@@ -150,6 +153,7 @@ export interface ChatState {
   isSpeaking: boolean;
   ttsEnabled: boolean;
   error: string | null;
+  isInteractionBlocked: boolean;
   suggestions?: string[];
 }
 
